@@ -1,0 +1,265 @@
+import { createFileRoute } from "@tanstack/react-router";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AppShell, useSession } from "@/components/AppShell";
+import { RepCard } from "@/components/RepCard";
+import { getTodayBoard } from "@/lib/hardcore.functions";
+import type { MemberDTO, RecordDTO } from "@/lib/hardcore.types";
+import { formatHeaderDate, todayLocal } from "@/lib/dates";
+import { hasAnyReps, isComplete, totalReps, type Reps } from "@/lib/stats";
+import { readOutbox, syncRecord } from "@/lib/outbox";
+
+export const Route = createFileRoute("/")({
+  head: () => ({
+    meta: [
+      { title: "Today — 777 HARDCORE" },
+      {
+        name: "description",
+        content: "Log today's push-ups, sit-ups and squats and see who is beating you.",
+      },
+      { name: "robots", content: "noindex" },
+      { property: "og:title", content: "Today — 777 HARDCORE" },
+      {
+        property: "og:description",
+        content: "Log today's push-ups, sit-ups and squats and see who is beating you.",
+      },
+    ],
+  }),
+  component: TodayRoute,
+});
+
+function TodayRoute() {
+  return (
+    <AppShell>
+      <TodayPage />
+    </AppShell>
+  );
+}
+
+type SyncState = "synced" | "saving" | "unsynced";
+
+const ZERO: Reps = { pushups: 0, situps: 0, squats: 0 };
+
+function TodayPage() {
+  const { token, member } = useSession();
+  const [date] = useState(todayLocal);
+  const [members, setMembers] = useState<MemberDTO[]>([]);
+  const [records, setRecords] = useState<Record<string, RecordDTO>>({});
+  const [mine, setMine] = useState<Reps>(ZERO);
+  const [loaded, setLoaded] = useState(false);
+  const [sync, setSync] = useState<SyncState>("synced");
+
+  const latest = useRef<Reps>(ZERO);
+  const dirty = useRef(false);
+  const saveTimer = useRef<number | undefined>(undefined);
+
+  const flush = useCallback(
+    async (reps: Reps) => {
+      setSync("saving");
+      const ok = await syncRecord(token, date, reps);
+      setSync(ok ? "synced" : "unsynced");
+      if (ok) {
+        setRecords((prev) => ({
+          ...prev,
+          [member.id]: { memberId: member.id, date, ...reps },
+        }));
+      }
+    },
+    [token, date, member.id],
+  );
+
+  const load = useCallback(async () => {
+    try {
+      const board = await getTodayBoard({ data: { token, date } });
+      setMembers(board.members);
+      const map: Record<string, RecordDTO> = {};
+      for (const r of board.records) map[r.memberId] = r;
+      setRecords(map);
+      if (!dirty.current) {
+        const pending = readOutbox(date);
+        const server = map[member.id];
+        const effective: Reps = pending ??
+          (server
+            ? { pushups: server.pushups, situps: server.situps, squats: server.squats }
+            : ZERO);
+        setMine(effective);
+        latest.current = effective;
+        if (pending) {
+          setSync("unsynced");
+          void flush(effective);
+        }
+      }
+    } catch {
+      // offline — keep whatever is on screen
+    } finally {
+      setLoaded(true);
+    }
+  }, [token, date, member.id, flush]);
+
+  useEffect(() => {
+    void load();
+    const interval = window.setInterval(() => void load(), 30000);
+    const onFocus = () => void load();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [load]);
+
+  // Retry unsynced reps as soon as the connection returns.
+  useEffect(() => {
+    if (sync !== "unsynced") return;
+    const retry = () => void flush(latest.current);
+    window.addEventListener("online", retry);
+    const interval = window.setInterval(retry, 15000);
+    return () => {
+      window.removeEventListener("online", retry);
+      window.clearInterval(interval);
+    };
+  }, [sync, flush]);
+
+  const commit = (next: Reps) => {
+    dirty.current = true;
+    setMine(next);
+    latest.current = next;
+    window.clearTimeout(saveTimer.current);
+    saveTimer.current = window.setTimeout(() => {
+      dirty.current = false;
+      void flush(latest.current);
+    }, 400);
+  };
+
+  const total = totalReps(mine);
+  const complete = isComplete(mine);
+  const pct = Math.min(100, Math.round((total / 300) * 100));
+
+  const groupRows = members
+    .map((m) => {
+      const rec: Reps =
+        m.id === member.id
+          ? mine
+          : (records[m.id] ?? ZERO);
+      return { member: m, reps: rec, total: totalReps(rec), complete: isComplete(rec) };
+    })
+    .sort((a, b) => b.total - a.total || Number(b.complete) - Number(a.complete) || a.member.name.localeCompare(b.member.name));
+
+  const anyGroupReps = groupRows.some((r) => r.total > 0);
+
+  return (
+    <div className="px-4 pt-safe">
+      <header className="flex items-end justify-between">
+        <div>
+          <h1 className="text-3xl font-bold leading-none tracking-tight">
+            777 <span className="text-primary">HARDCORE</span>
+          </h1>
+          <p className="tnum mt-1 text-sm font-semibold tracking-[0.3em] text-muted-foreground">
+            {formatHeaderDate(date)}
+          </p>
+        </div>
+        {sync === "unsynced" && (
+          <span className="border border-partial px-2 py-0.5 text-xs font-bold tracking-widest text-partial">
+            NOT SYNCED
+          </span>
+        )}
+      </header>
+
+      {!loaded ? (
+        <div className="mt-6 flex flex-col gap-3">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="h-40 animate-pulse border border-border bg-card" />
+          ))}
+        </div>
+      ) : (
+        <>
+          <div className="mt-6 flex flex-col gap-3">
+            <RepCard
+              label="PUSH-UPS"
+              value={mine.pushups}
+              onCommit={(v) => commit({ ...mine, pushups: v })}
+            />
+            <RepCard
+              label="SIT-UPS"
+              value={mine.situps}
+              onCommit={(v) => commit({ ...mine, situps: v })}
+            />
+            <RepCard
+              label="SQUATS"
+              value={mine.squats}
+              onCommit={(v) => commit({ ...mine, squats: v })}
+            />
+          </div>
+
+          <section className="mt-4 border border-border bg-card p-4">
+            {complete ? (
+              <div className="mb-3 border border-complete bg-complete/10 px-3 py-2 text-center">
+                <p className="text-xl font-bold tracking-[0.2em] text-complete">✓ DAY COMPLETE</p>
+                <p className="tnum text-sm font-semibold tracking-widest text-foreground">
+                  {total} REPS
+                </p>
+              </div>
+            ) : (
+              <div className="mb-3 flex items-baseline justify-between">
+                <span className="tnum text-2xl font-bold">{total} / 300 REPS</span>
+                <span className="tnum text-lg font-bold text-primary">{pct}%</span>
+              </div>
+            )}
+            <div className="h-3 w-full bg-muted">
+              <div
+                className={`h-full transition-all duration-300 ${complete ? "bg-complete" : "bg-primary"}`}
+                style={{ width: `${pct}%` }}
+              />
+            </div>
+            {complete && total > 300 && (
+              <p className="tnum mt-2 text-right text-sm font-semibold text-muted-foreground">
+                {pct}% · BAR MAXED, REPS KEEP COUNTING
+              </p>
+            )}
+          </section>
+
+          <section className="mt-6">
+            <h2 className="text-sm font-bold tracking-[0.25em] text-muted-foreground">
+              777 HARDCORE — TODAY
+            </h2>
+            {!anyGroupReps ? (
+              <p className="mt-3 border border-border px-4 py-6 text-center text-sm font-bold tracking-widest text-muted-foreground">
+                NO REPS YET.
+                <br />
+                BE THE FIRST.
+              </p>
+            ) : (
+              <ol className="mt-2 border-t border-border">
+                {groupRows.map((row, i) => (
+                  <li
+                    key={row.member.id}
+                    className="flex items-center justify-between border-b border-border py-2"
+                  >
+                    <span className="flex items-baseline gap-3">
+                      <span className="tnum w-6 text-sm font-semibold text-muted-foreground">
+                        {String(i + 1).padStart(2, "0")}
+                      </span>
+                      <span
+                        className={`text-lg font-bold tracking-wide ${
+                          row.complete
+                            ? "text-complete"
+                            : hasAnyReps(row.reps)
+                              ? "text-partial"
+                              : "text-idle"
+                        } ${row.member.id === member.id ? "underline underline-offset-4" : ""}`}
+                      >
+                        {row.member.name.toUpperCase()}
+                      </span>
+                    </span>
+                    <span className="tnum text-lg font-semibold">
+                      {row.total} / 300{" "}
+                      {row.complete && <span className="text-complete">✓</span>}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </section>
+        </>
+      )}
+    </div>
+  );
+}

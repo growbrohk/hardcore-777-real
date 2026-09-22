@@ -1,0 +1,112 @@
+@import "tailwindcss" source(none);
+@source "../src";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * 777 HARDCORE design system — brutalist scoreboard.
+ * Single dark theme: near-black, off-white, safety orange.
+ */
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 2px);
+  --radius-md: calc(var(--radius) - 1px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 2px);
+  --radius-2xl: calc(var(--radius) + 4px);
+  --radius-3xl: calc(var(--radius) + 8px);
+  --radius-4xl: calc(var(--radius) + 12px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-ring-offset-background: var(--background);
+  --color-complete: var(--complete);
+  --color-partial: var(--partial);
+  --color-idle: var(--idle);
+  --font-sans: "Barlow Condensed", "Arial Narrow", "Helvetica Neue", sans-serif;
+}
+
+:root {
+  --radius: 0.125rem;
+  --background: oklch(0.175 0 0);
+  --foreground: oklch(0.962 0.008 98);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.962 0.008 98);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.962 0.008 98);
+  --primary: oklch(0.681 0.213 40.5);
+  --primary-foreground: oklch(0.175 0 0);
+  --secondary: oklch(0.24 0 0);
+  --secondary-foreground: oklch(0.962 0.008 98);
+  --muted: oklch(0.23 0 0);
+  --muted-foreground: oklch(0.62 0.01 95);
+  --accent: oklch(0.681 0.213 40.5);
+  --accent-foreground: oklch(0.175 0 0);
+  --destructive: oklch(0.6 0.22 27);
+  --destructive-foreground: oklch(0.962 0.008 98);
+  --border: oklch(0.29 0 0);
+  --input: oklch(0.29 0 0);
+  --ring: oklch(0.681 0.213 40.5);
+  --complete: oklch(0.72 0.19 150);
+  --partial: oklch(0.79 0.15 85);
+  --idle: oklch(0.42 0 0);
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  html {
+    background-color: var(--color-background);
+  }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    /* Disable pull-to-refresh / overscroll glow so it feels app-like */
+    overscroll-behavior-y: none;
+  }
+
+  /* Big tap targets shouldn't flash grey on iOS */
+  button,
+  a {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+
+  input {
+    font-family: inherit;
+  }
+}
+
+@utility tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+@utility pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+@utility pt-safe {
+  padding-top: calc(1.5rem + env(safe-area-inset-top));
+}
