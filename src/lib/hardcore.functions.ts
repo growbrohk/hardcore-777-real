@@ -18,10 +18,6 @@ const repsSchema = z.object({
   burpees: z.number().int().min(0).max(99999).optional(),
 });
 
-export const listMemberNames = createServerFn({ method: "GET" }).handler(() =>
-  srv.listMemberNames(),
-);
-
 export const loginWithPin = createServerFn({ method: "POST" })
   .validator((data) =>
     z

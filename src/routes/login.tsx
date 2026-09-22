@@ -1,7 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { listMemberNames, loginWithPin, signupWithPin } from "@/lib/hardcore.functions";
-import type { MemberDTO } from "@/lib/hardcore.types";
+import { loginWithPin, signupWithPin } from "@/lib/hardcore.functions";
 import { todayLocal } from "@/lib/dates";
 import { getStoredSession, storeSession } from "@/lib/session";
 
@@ -21,7 +20,6 @@ export const Route = createFileRoute("/login")({
 function LoginPage() {
   const navigate = useNavigate();
   const [mode, setMode] = useState<"login" | "signup">("login");
-  const [members, setMembers] = useState<MemberDTO[] | null>(null);
   const [name, setName] = useState("");
   const [pin, setPin] = useState("");
   const [pin2, setPin2] = useState("");
@@ -31,11 +29,7 @@ function LoginPage() {
   useEffect(() => {
     if (getStoredSession()) {
       void navigate({ to: "/", replace: true });
-      return;
     }
-    listMemberNames()
-      .then((list) => setMembers(list))
-      .catch(() => setMembers([]));
   }, [navigate]);
 
   const switchMode = (next: "login" | "signup") => {
@@ -83,42 +77,20 @@ function LoginPage() {
         </p>
 
         <form onSubmit={submit} className="mt-10 flex flex-col gap-4">
-          {mode === "login" ? (
-            <label className="flex flex-col gap-1.5">
-              <span className="text-xs font-bold tracking-widest text-muted-foreground">
-                WHO ARE YOU
-              </span>
-              <select
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="h-14 border border-border bg-card px-4 text-xl font-semibold uppercase tracking-wide text-foreground outline-none focus:border-primary"
-              >
-                <option value="" disabled>
-                  {members === null ? "LOADING…" : "SELECT YOUR NAME"}
-                </option>
-                {(members ?? []).map((m) => (
-                  <option key={m.id} value={m.name}>
-                    {m.name.toUpperCase()}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : (
-            <label className="flex flex-col gap-1.5">
-              <span className="text-xs font-bold tracking-widest text-muted-foreground">
-                YOUR NAME
-              </span>
-              <input
-                type="text"
-                autoComplete="off"
-                maxLength={30}
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="NAME"
-                className="h-14 border border-border bg-card px-4 text-xl font-semibold uppercase tracking-wide text-foreground outline-none placeholder:text-muted focus:border-primary"
-              />
-            </label>
-          )}
+          <label className="flex flex-col gap-1.5">
+            <span className="text-xs font-bold tracking-widest text-muted-foreground">
+              {mode === "login" ? "WHO ARE YOU" : "YOUR NAME"}
+            </span>
+            <input
+              type="text"
+              autoComplete="off"
+              maxLength={30}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="NAME"
+              className="h-14 border border-border bg-card px-4 text-xl font-semibold uppercase tracking-wide text-foreground outline-none placeholder:text-muted focus:border-primary"
+            />
+          </label>
 
           <label className="flex flex-col gap-1.5">
             <span className="text-xs font-bold tracking-widest text-muted-foreground">

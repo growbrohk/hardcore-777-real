@@ -374,15 +374,6 @@ async function ensureProgression(row: MemberRow, today: string): Promise<MemberR
 
 // ---------- public API used by the server functions ----------
 
-export async function listMemberNames(): Promise<MemberDTO[]> {
-  const { data, error } = await supabaseAdmin
-    .from("members")
-    .select(MEMBER_COLS)
-    .order("name", { ascending: true });
-  if (error) throw new Error("Failed to load members");
-  return ((data ?? []) as MemberRow[]).map(toMember);
-}
-
 type MemberAuthRow = MemberRow & { pin_hash: string };
 
 /** Case-insensitive exact name match (ILIKE treats `_`/`%` as wildcards). */
