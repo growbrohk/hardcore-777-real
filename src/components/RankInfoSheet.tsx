@@ -103,10 +103,12 @@ export function RankInfoSheet({
 
         <section className="mt-4">
           <h4 className="text-xs font-bold tracking-[0.25em] text-muted-foreground">DEMOTE</h4>
-          <p className="mt-2 text-sm font-semibold leading-relaxed text-foreground">
-            Miss {QUALIFYING_DAYS} days at your current count and you drop to the highest count and
-            tier you did hit. Hit none and you reset to HALF PUNCH (3 exercises).
-          </p>
+          <div className="mt-2 text-sm font-semibold leading-relaxed text-foreground">
+            <p>
+              Miss <span className="text-primary">{QUALIFYING_DAYS} days</span> and you DROP!
+            </p>
+            <p>Hit NONE and you reset to HALF PUNCH (3 exercises)!</p>
+          </div>
         </section>
       </div>
     </div>
