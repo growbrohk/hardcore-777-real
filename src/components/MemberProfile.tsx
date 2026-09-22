@@ -263,12 +263,9 @@ function RankInfoSheet({
           </button>
         </div>
 
-        <div className="mt-3 text-xs font-semibold leading-relaxed text-muted-foreground">
-          <p>A rank is the highest routine you held for {QUALIFYING_DAYS} days in a calendar month.</p>
-          <p>
-            HALF = {HALF_TARGET}+ on every active exercise. FULL = {FULL_TARGET}+.
-          </p>
-        </div>
+        <p className="mt-3 text-xs font-semibold leading-relaxed text-muted-foreground">
+          HALF = {HALF_TARGET}+ / FULL = {FULL_TARGET}+
+        </p>
 
         <ol className="mt-4 flex flex-col gap-2">
           {levels.map((level) => {
@@ -293,8 +290,8 @@ function RankInfoSheet({
         <section className="mt-5">
           <h4 className="text-xs font-bold tracking-[0.25em] text-muted-foreground">PROMOTE</h4>
           <p className="mt-2 text-sm font-semibold leading-relaxed text-foreground">
-            Hit {QUALIFYING_DAYS} days at your current routine (HALF or FULL). That unlocks the next
-            exercise, up to 7.
+            Hit <span className="text-primary">{QUALIFYING_DAYS} days</span> in a month (HALF or
+            FULL) to LEVEL UP!
           </p>
         </section>
 
