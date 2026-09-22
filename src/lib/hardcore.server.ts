@@ -686,9 +686,7 @@ async function loadMemberSnapshots(memberId: string): Promise<Record<string, Mon
   return map;
 }
 
-export async function getMyRecords(token: string, today: string): Promise<MyHistoryDTO> {
-  const memberId = await memberIdFromToken(token);
-  const row = await ensureProgression(await loadMemberRow(memberId), clampTrustedClientDate(today));
+async function loadMemberHistory(memberId: string, row: MemberRow): Promise<MyHistoryDTO> {
   const [recordsRes, monthSnapshots] = await Promise.all([
     supabaseAdmin
       .from("daily_records")
@@ -703,4 +701,20 @@ export async function getMyRecords(token: string, today: string): Promise<MyHist
     records: ((recordsRes.data ?? []) as RecRow[]).map(toRecord),
     monthSnapshots,
   };
+}
+
+export async function getMyRecords(token: string, today: string): Promise<MyHistoryDTO> {
+  const memberId = await memberIdFromToken(token);
+  const row = await ensureProgression(await loadMemberRow(memberId), clampTrustedClientDate(today));
+  return loadMemberHistory(memberId, row);
+}
+
+/** Read another member's history. Viewer must be logged in; no progression write. */
+export async function getMemberRecords(
+  token: string,
+  targetMemberId: string,
+): Promise<MyHistoryDTO> {
+  await memberIdFromToken(token);
+  const row = await loadMemberRow(targetMemberId);
+  return loadMemberHistory(targetMemberId, row);
 }

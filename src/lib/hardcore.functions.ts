@@ -70,3 +70,7 @@ export const getLeaderboard = createServerFn({ method: "POST" })
 export const getMyHistory = createServerFn({ method: "POST" })
   .validator((data) => sessionSchema.parse(data))
   .handler(({ data }) => srv.getMyRecords(data.token, data.today));
+
+export const getMemberHistory = createServerFn({ method: "POST" })
+  .validator((data) => sessionSchema.extend({ memberId: z.string().uuid() }).parse(data))
+  .handler(({ data }) => srv.getMemberRecords(data.token, data.memberId));

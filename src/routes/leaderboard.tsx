@@ -1,10 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { AppShell, useSession } from "@/components/AppShell";
-import { getLeaderboard } from "@/lib/hardcore.functions";
-import type { LeaderboardRowDTO } from "@/lib/hardcore.types";
-import { EXERCISES } from "@/lib/exercises";
+import { MemberProfile } from "@/components/MemberProfile";
+import { getLeaderboard, getMemberHistory } from "@/lib/hardcore.functions";
+import type { LeaderboardRowDTO, MemberDTO, RecordDTO } from "@/lib/hardcore.types";
 import {
   addDaysISO,
   addMonthsISO,
@@ -18,6 +18,7 @@ import {
   activeExercises,
   exerciseLevelLabel,
   memberStatusLabel,
+  type MonthSnapshot,
 } from "@/lib/member-ui";
 import { exerciseLevel } from "@/lib/progression";
 
@@ -70,6 +71,7 @@ function LeaderboardPage() {
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const [profileMemberId, setProfileMemberId] = useState<string | null>(null);
 
   const today = todayLocal();
   const isCurrentPeriod =
@@ -157,6 +159,12 @@ function LeaderboardPage() {
   };
 
   const showDaysMetric = period !== "day" && metric === "days";
+  const opensProfile = period !== "day" && metric === "reps";
+
+  const onRowActivate = (id: string) => {
+    if (opensProfile) setProfileMemberId(id);
+    else toggleExpand(id);
+  };
 
   return (
     <div className="px-4 pt-safe">
@@ -249,11 +257,10 @@ function LeaderboardPage() {
               row={row}
               rank={i + 1}
               me={row.memberId === member.id}
-              isOpen={expanded.has(row.memberId)}
+              isOpen={!opensProfile && expanded.has(row.memberId)}
               showDaysMetric={showDaysMetric}
               period={period}
-              metric={metric}
-              onToggle={() => toggleExpand(row.memberId)}
+              onToggle={() => onRowActivate(row.memberId)}
             />
           ))}
         </ol>
@@ -265,11 +272,10 @@ function LeaderboardPage() {
             row={myRow}
             rank={myRank + 1}
             me
-            isOpen={expanded.has(myRow.memberId)}
+            isOpen={!opensProfile && expanded.has(myRow.memberId)}
             showDaysMetric={showDaysMetric}
             period={period}
-            metric={metric}
-            onToggle={() => toggleExpand(myRow.memberId)}
+            onToggle={() => onRowActivate(myRow.memberId)}
           />
         </ol>
       )}
@@ -289,8 +295,120 @@ function LeaderboardPage() {
           ? "EVERY REP COUNTS · TAP ROW FOR BREAKDOWN"
           : metric === "days"
             ? "MOST COMPLETE DAYS WINS · TAP ROW FOR BREAKDOWN"
-            : "EVERY REP COUNTS · TAP ROW FOR EXERCISES 4–7"}
+            : "EVERY REP COUNTS · TAP ROW TO VIEW THEIR LOG"}
       </p>
+
+      {profileMemberId && (
+        <MemberProfileOverlay
+          key={profileMemberId}
+          memberId={profileMemberId}
+          token={token}
+          {...(period === "month" ? { initialCursor: monthStart(ref) } : {})}
+          onClose={() => setProfileMemberId(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+function MemberProfileOverlay({
+  memberId,
+  token,
+  initialCursor,
+  onClose,
+}: {
+  memberId: string;
+  token: string;
+  initialCursor?: string;
+  onClose: () => void;
+}) {
+  const [member, setMember] = useState<MemberDTO | null>(null);
+  const [records, setRecords] = useState<Record<string, RecordDTO>>({});
+  const [snapshots, setSnapshots] = useState<Record<string, MonthSnapshot>>({});
+  const [loaded, setLoaded] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const result = await getMemberHistory({
+          data: { token, today: todayLocal(), memberId },
+        });
+        if (cancelled) return;
+        const map: Record<string, RecordDTO> = {};
+        for (const r of result.records) map[r.date] = r;
+        setMember(result.member);
+        setRecords(map);
+        setSnapshots(result.monthSnapshots);
+      } catch {
+        if (!cancelled) setFailed(true);
+      } finally {
+        if (!cancelled) setLoaded(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [token, memberId]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const closeButton = (
+    <button
+      type="button"
+      onClick={onClose}
+      aria-label="Close"
+      className="flex h-10 w-10 items-center justify-center border border-border text-muted-foreground active:bg-muted"
+    >
+      <X className="h-5 w-5" strokeWidth={2.5} />
+    </button>
+  );
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex justify-center bg-background"
+      onClick={onClose}
+    >
+      <div
+        className="mx-auto h-full w-full max-w-md overflow-y-auto"
+        style={{ paddingBottom: "calc(2rem + env(safe-area-inset-bottom))" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {failed ? (
+          <div className="px-4 pt-safe">
+            <header className="flex items-start justify-end">{closeButton}</header>
+            <p className="mt-6 border border-border px-4 py-8 text-center text-sm font-bold tracking-widest text-muted-foreground">
+              COULD NOT LOAD THIS LOG.
+            </p>
+          </div>
+        ) : member ? (
+          <MemberProfile
+            member={member}
+            records={records}
+            snapshots={snapshots}
+            loaded={loaded}
+            readOnly
+            {...(initialCursor ? { initialCursor } : {})}
+            headerAction={closeButton}
+          />
+        ) : (
+          <div className="px-4 pt-safe">
+            <header className="flex items-start justify-end">{closeButton}</header>
+            <div className="mt-6 flex flex-col gap-3">
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="h-24 animate-pulse border border-border bg-card" />
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -302,7 +420,6 @@ function LeaderboardRowItem({
   isOpen,
   showDaysMetric,
   period,
-  metric,
   onToggle,
 }: {
   row: LeaderboardRowDTO;
@@ -311,11 +428,9 @@ function LeaderboardRowItem({
   isOpen: boolean;
   showDaysMetric: boolean;
   period: Period;
-  metric: Metric;
   onToggle: () => void;
 }) {
   const breakdownExercises = activeExercises(row.periodCount);
-  const extraExercises = EXERCISES.slice(3, row.activeCount);
 
   return (
     <li className={`border-b border-border ${me ? "bg-card" : ""}`}>
@@ -370,40 +485,22 @@ function LeaderboardRowItem({
 
       {isOpen && (
         <div className="border-t border-border px-4 pb-3 pt-2">
-          {period === "day" || metric === "days" ? (
-            <ul className="flex flex-col gap-1.5 text-xs font-semibold tracking-widest text-muted-foreground">
-              {breakdownExercises.map((ex) => (
-                <li key={ex.key} className="flex justify-between gap-4">
-                  <span>{ex.label}</span>
-                  {period === "day" ? (
-                    <span className="tnum text-foreground">
-                      {exerciseLevelLabel(exerciseLevel(row.reps[ex.key]))}
-                    </span>
-                  ) : (
-                    <span className="tnum text-foreground">
-                      {row.full[ex.key]} FULL · {row.half[ex.key]} HALF
-                    </span>
-                  )}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            extraExercises.length > 0 && (
-              <ul className="flex flex-col gap-1.5 text-xs font-semibold tracking-widest text-muted-foreground">
-                {extraExercises.map((ex) => (
-                  <li key={ex.key} className="flex justify-between gap-4">
-                    <span>{ex.short}</span>
-                    <span className="tnum text-foreground">
-                      {row.reps[ex.key].toLocaleString("en-US")}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )
-          )}
-          {metric === "reps" && extraExercises.length === 0 && (
-            <p className="text-xs tracking-widest text-muted-foreground">NO EXTRA EXERCISES</p>
-          )}
+          <ul className="flex flex-col gap-1.5 text-xs font-semibold tracking-widest text-muted-foreground">
+            {breakdownExercises.map((ex) => (
+              <li key={ex.key} className="flex justify-between gap-4">
+                <span>{ex.label}</span>
+                {period === "day" ? (
+                  <span className="tnum text-foreground">
+                    {exerciseLevelLabel(exerciseLevel(row.reps[ex.key]))}
+                  </span>
+                ) : (
+                  <span className="tnum text-foreground">
+                    {row.full[ex.key]} FULL · {row.half[ex.key]} HALF
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
         </div>
       )}
     </li>
