@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AppShell, useSession } from "@/components/AppShell";
+import { RankInfoButton } from "@/components/RankInfoSheet";
 import { RepCard } from "@/components/RepCard";
 import { getTodayBoard } from "@/lib/hardcore.functions";
 import type { MemberDTO, RecordDTO } from "@/lib/hardcore.types";
@@ -268,9 +269,14 @@ function TodayPage() {
                 {myQualifyingDays} / {QUALIFYING_DAYS} DAYS
               </p>
               {nextUnlock && (
-                <p className="mt-1 text-center text-xs font-semibold tracking-[0.25em] text-muted-foreground">
-                  NEXT UNLOCK · {nextUnlock.label}
-                </p>
+                <div className="mt-1 flex items-center justify-center gap-1.5 text-xs font-semibold tracking-[0.25em] text-muted-foreground">
+                  <span>NEXT UNLOCK · {nextUnlock.label}</span>
+                  <RankInfoButton
+                    gender={member.gender}
+                    statusId={member.statusId}
+                    activeCount={member.activeCount}
+                  />
+                </div>
               )}
             </section>
           )}
