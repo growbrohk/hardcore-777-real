@@ -23,7 +23,7 @@ export const listMemberNames = createServerFn({ method: "GET" }).handler(() =>
 );
 
 export const loginWithPin = createServerFn({ method: "POST" })
-  .inputValidator((data) =>
+  .validator((data) =>
     z
       .object({ name: z.string().min(1).max(60), pin: z.string().regex(/^\d{4}$/) })
       .parse(data),
@@ -31,7 +31,7 @@ export const loginWithPin = createServerFn({ method: "POST" })
   .handler(({ data }) => srv.login(data.name, data.pin));
 
 export const signupWithPin = createServerFn({ method: "POST" })
-  .inputValidator((data) =>
+  .validator((data) =>
     z
       .object({
         name: z.string().trim().min(1).max(30),
@@ -43,25 +43,25 @@ export const signupWithPin = createServerFn({ method: "POST" })
   .handler(({ data }) => srv.signup(data.name, data.pin, data.today));
 
 export const validateSession = createServerFn({ method: "POST" })
-  .inputValidator((data) => sessionSchema.parse(data))
+  .validator((data) => sessionSchema.parse(data))
   .handler(({ data }) => srv.memberFromToken(data.token, data.today));
 
 export const setMyGender = createServerFn({ method: "POST" })
-  .inputValidator((data) => tokenSchema.extend({ gender: z.enum(["man", "woman"]) }).parse(data))
+  .validator((data) => tokenSchema.extend({ gender: z.enum(["man", "woman"]) }).parse(data))
   .handler(({ data }) => srv.setGender(data.token, data.gender));
 
 export const getTodayBoard = createServerFn({ method: "POST" })
-  .inputValidator((data) => tokenSchema.extend({ date: dateSchema }).parse(data))
+  .validator((data) => tokenSchema.extend({ date: dateSchema }).parse(data))
   .handler(({ data }) => srv.getBoard(data.token, data.date));
 
 export const saveMyRecord = createServerFn({ method: "POST" })
-  .inputValidator((data) =>
+  .validator((data) =>
     tokenSchema.extend({ date: dateSchema, reps: repsSchema }).parse(data),
   )
   .handler(({ data }) => srv.saveRecord(data.token, data.date, data.reps as Partial<Reps>));
 
 export const getLeaderboard = createServerFn({ method: "POST" })
-  .inputValidator((data) =>
+  .validator((data) =>
     tokenSchema
       .extend({ period: z.enum(["day", "month", "year"]), ref: dateSchema })
       .parse(data),
@@ -72,5 +72,5 @@ export const getLeaderboard = createServerFn({ method: "POST" })
   });
 
 export const getMyHistory = createServerFn({ method: "POST" })
-  .inputValidator((data) => sessionSchema.parse(data))
+  .validator((data) => sessionSchema.parse(data))
   .handler(({ data }) => srv.getMyRecords(data.token, data.today));
