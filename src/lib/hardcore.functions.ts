@@ -67,7 +67,7 @@ export const getLeaderboard = createServerFn({ method: "POST" })
       .parse(data),
   )
   .handler(async ({ data }) => {
-    await srv.memberFromToken(data.token, data.ref);
+    await srv.memberIdFromToken(data.token);
     return srv.getLeaderboard(data.period, data.ref);
   });
 

@@ -117,7 +117,7 @@ async function signToken(memberId: string): Promise<string> {
   return `${payload}.${await hmacSign(payload)}`;
 }
 
-async function memberIdFromToken(token: string): Promise<string> {
+export async function memberIdFromToken(token: string): Promise<string> {
   const dot = token.lastIndexOf(".");
   if (dot <= 0) throw new Error("Unauthorized");
   const payload = token.slice(0, dot);
@@ -142,6 +142,84 @@ async function memberIdFromToken(token: string): Promise<string> {
 const attempts = new Map<string, { fails: number; lockedUntil: number }>();
 const MAX_FAILS = 5;
 const LOCK_MS = 5 * 60 * 1000;
+
+// ---------- leaderboard cache + paging (best-effort, per server instance) ----------
+
+const PAGE_SIZE = 1000;
+const LEADERBOARD_TTL_MS = 60 * 1000;
+const leaderboardCache = new Map<string, { at: number; rows: LeaderboardRowDTO[] }>();
+
+function leaderboardCacheKey(period: string, ref: string): string {
+  return `${period}:${ref}`;
+}
+
+function getCachedLeaderboard(
+  period: string,
+  ref: string,
+): LeaderboardRowDTO[] | null {
+  const key = leaderboardCacheKey(period, ref);
+  const hit = leaderboardCache.get(key);
+  if (!hit) return null;
+  if (Date.now() - hit.at > LEADERBOARD_TTL_MS) {
+    leaderboardCache.delete(key);
+    return null;
+  }
+  return hit.rows;
+}
+
+function setCachedLeaderboard(
+  period: string,
+  ref: string,
+  rows: LeaderboardRowDTO[],
+): void {
+  leaderboardCache.set(leaderboardCacheKey(period, ref), { at: Date.now(), rows });
+}
+
+function clearLeaderboardCache(): void {
+  leaderboardCache.clear();
+}
+
+interface PageResult<T> {
+  data: T[] | null;
+  error: { message?: string } | null;
+  count: number | null;
+}
+
+/** Walk past PostgREST's 1000-row cap. First page asks for an exact count,
+ *  remaining pages load in one parallel wave so a year view is 2 RTTs, not 37. */
+async function fetchAllPages<T>(
+  queryPage: (from: number, to: number) => PromiseLike<PageResult<T>>,
+): Promise<T[]> {
+  const first = await queryPage(0, PAGE_SIZE - 1);
+  if (first.error) throw new Error("Failed to load leaderboard");
+  const rows = [...(first.data ?? [])];
+  const total = first.count;
+
+  if (total != null) {
+    if (total <= rows.length) return rows;
+    const starts: number[] = [];
+    for (let from = PAGE_SIZE; from < total; from += PAGE_SIZE) starts.push(from);
+    const rest = await Promise.all(
+      starts.map((from) => queryPage(from, from + PAGE_SIZE - 1)),
+    );
+    for (const page of rest) {
+      if (page.error) throw new Error("Failed to load leaderboard");
+      rows.push(...(page.data ?? []));
+    }
+    return rows;
+  }
+
+  let from = PAGE_SIZE;
+  while (rows.length === from) {
+    const page = await queryPage(from, from + PAGE_SIZE - 1);
+    if (page.error) throw new Error("Failed to load leaderboard");
+    const chunk = page.data ?? [];
+    rows.push(...chunk);
+    if (chunk.length < PAGE_SIZE) break;
+    from += PAGE_SIZE;
+  }
+  return rows;
+}
 
 function checkRateLimit(key: string): void {
   const entry = attempts.get(key);
@@ -401,27 +479,35 @@ export async function setGender(token: string, gender: Gender): Promise<MemberDT
   return toMember(data as MemberRow);
 }
 
+interface SnapshotRow {
+  member_id: string;
+  month: string;
+  status_id: string;
+  active_count: number;
+}
+
 async function loadSnapshotMaps(
-  memberIds: string[],
   monthLo: string,
   monthHi: string,
 ): Promise<Map<string, Record<string, MonthSnapshot>>> {
-  if (memberIds.length === 0) return new Map();
-  const { data } = await supabaseAdmin
-    .from("member_month_progress")
-    .select("member_id, month, status_id, active_count")
-    .in("member_id", memberIds)
-    .gte("month", monthLo)
-    .lte("month", monthHi);
+  const data = await fetchAllPages<SnapshotRow>((from, to) =>
+    supabaseAdmin
+      .from("member_month_progress")
+      .select("member_id, month, status_id, active_count", from === 0 ? { count: "exact" } : {})
+      .gte("month", monthLo)
+      .lte("month", monthHi)
+      .order("member_id", { ascending: true })
+      .order("month", { ascending: true })
+      .range(from, to),
+  );
   const byMember = new Map<string, Record<string, MonthSnapshot>>();
-  for (const row of data ?? []) {
-    const id = row.member_id as string;
-    const map = byMember.get(id) ?? {};
-    map[row.month as string] = {
-      statusId: row.status_id as string,
-      activeCount: clampCount(row.active_count as number),
+  for (const row of data) {
+    const map = byMember.get(row.member_id) ?? {};
+    map[row.month] = {
+      statusId: row.status_id,
+      activeCount: clampCount(row.active_count),
     };
-    byMember.set(id, map);
+    byMember.set(row.member_id, map);
   }
   return byMember;
 }
@@ -492,6 +578,7 @@ export async function saveRecord(
     .select(REC_COLS)
     .single();
   if (error || !data) throw new Error("Failed to save");
+  clearLeaderboardCache();
   return toRecord(data as RecRow);
 }
 
@@ -499,6 +586,9 @@ export async function getLeaderboard(
   period: "day" | "month" | "year",
   ref: string,
 ): Promise<LeaderboardRowDTO[]> {
+  const cached = getCachedLeaderboard(period, ref);
+  if (cached) return cached;
+
   let start: string;
   let end: string;
   if (period === "day") {
@@ -515,23 +605,23 @@ export async function getLeaderboard(
   const snapLo = prevMonthKey(monthKey(start));
   const snapHi = prevMonthKey(monthKey(end));
 
-  const membersRes = await supabaseAdmin
-    .from("members")
-    .select(MEMBER_COLS)
-    .order("name", { ascending: true });
+  const [membersRes, snapMaps, records] = await Promise.all([
+    supabaseAdmin.from("members").select(MEMBER_COLS).order("name", { ascending: true }),
+    loadSnapshotMaps(snapLo, snapHi),
+    fetchAllPages<RecRow>((from, to) =>
+      supabaseAdmin
+        .from("daily_records")
+        .select(REC_COLS, from === 0 ? { count: "exact" } : {})
+        .gte("date", start)
+        .lte("date", end)
+        .order("date", { ascending: true })
+        .order("member_id", { ascending: true })
+        .range(from, to),
+    ),
+  ]);
   if (membersRes.error) throw new Error("Failed to load leaderboard");
 
   const memberRows = (membersRes.data ?? []) as MemberRow[];
-  const [snapMaps, recordsResFinal] = await Promise.all([
-    loadSnapshotMaps(
-      memberRows.map((r) => r.id),
-      snapLo,
-      snapHi,
-    ),
-    supabaseAdmin.from("daily_records").select(REC_COLS).gte("date", start).lte("date", end),
-  ]);
-  if (recordsResFinal.error) throw new Error("Failed to load leaderboard");
-
   const refMonth = monthKey(ref);
   const periodRoutineCount = (snap: Record<string, MonthSnapshot>, m: MemberDTO) =>
     period === "year"
@@ -563,7 +653,7 @@ export async function getLeaderboard(
     });
   }
 
-  for (const raw of (recordsResFinal.data ?? []) as RecRow[]) {
+  for (const raw of records) {
     const row = byMember.get(raw.member_id);
     if (!row) continue;
     const reps = toReps(raw);
@@ -581,7 +671,10 @@ export async function getLeaderboard(
       else if (v >= HALF_TARGET) row.half[k] += 1;
     }
   }
-  return [...byMember.values()];
+
+  const rows = [...byMember.values()];
+  setCachedLeaderboard(period, ref, rows);
+  return rows;
 }
 
 async function loadMemberSnapshots(memberId: string): Promise<Record<string, MonthSnapshot>> {
