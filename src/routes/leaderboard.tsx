@@ -113,8 +113,8 @@ function LeaderboardPage() {
   const sorted = [...rows].sort((a, b) => {
     if (period === "day") {
       return (
-        Number(b.complete) - Number(a.complete) ||
         b.totalReps - a.totalReps ||
+        Number(b.complete) - Number(a.complete) ||
         a.name.localeCompare(b.name)
       );
     }
@@ -143,7 +143,7 @@ function LeaderboardPage() {
     });
   };
 
-  const showDaysMetric = period === "day" || metric === "days";
+  const showDaysMetric = period !== "day" && metric === "days";
 
   return (
     <div className="px-4 pt-safe">
@@ -333,7 +333,7 @@ function LeaderboardPage() {
 
       <p className="mt-6 text-center text-xs font-medium tracking-widest text-muted-foreground">
         {period === "day"
-          ? "COMPLETE DAYS RANK FIRST, THEN TOTAL REPS · TAP ROW FOR BREAKDOWN"
+          ? "EVERY REP COUNTS · TAP ROW FOR BREAKDOWN"
           : metric === "days"
             ? "MOST COMPLETE DAYS WINS · TAP ROW FOR BREAKDOWN"
             : "EVERY REP COUNTS · TAP ROW FOR EXERCISES 4–7"}
