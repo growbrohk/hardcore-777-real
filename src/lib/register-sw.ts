@@ -1,7 +1,6 @@
 // Single guarded registrar for the app service worker.
-// Never registers in dev, Lovable preview hosts, or iframes — and actively
-// unregisters any stale copy of this app's /sw.js in those contexts.
-// Supports the ?sw=off kill switch.
+// Never registers in dev, iframes, or local preview — and actively unregisters
+// any stale copy of this app's /sw.js in those contexts. Supports ?sw=off.
 
 async function unregisterAppServiceWorkers(): Promise<void> {
   if (!("serviceWorker" in navigator)) return;
@@ -24,18 +23,7 @@ function isPreviewOrDevContext(): boolean {
   if (!import.meta.env.PROD) return true;
   if (typeof window !== "undefined" && window.top !== window.self) return true;
   const host = window.location.hostname;
-  return (
-    host.startsWith("id-preview--") ||
-    host.startsWith("preview--") ||
-    host === "localhost" ||
-    host === "127.0.0.1" ||
-    host === "lovableproject.com" ||
-    host.endsWith(".lovableproject.com") ||
-    host === "lovableproject-dev.com" ||
-    host.endsWith(".lovableproject-dev.com") ||
-    host === "beta.lovable.dev" ||
-    host.endsWith(".beta.lovable.dev")
-  );
+  return host === "localhost" || host === "127.0.0.1";
 }
 
 export async function registerServiceWorker(): Promise<void> {
