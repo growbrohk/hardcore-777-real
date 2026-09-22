@@ -166,7 +166,7 @@ function toMember(row: MemberRow): MemberDTO {
   const statusId = row.status_id ?? DEFAULT_STATUS_ID;
   const activeCount = clampCount(row.active_count ?? MIN_EXERCISES);
   const earned = parseStatus(statusId);
-  const unlocked = earned.tier === "full" && activeCount > earned.count;
+  const unlocked = activeCount > earned.count;
   return {
     id: row.id,
     name: row.name,
@@ -445,14 +445,14 @@ export async function getBoard(token: string, date: string): Promise<BoardDTO> {
   if (membersRes.error || recordsRes.error) throw new Error("Failed to load today");
 
   const activeCount = clampCount(me.active_count ?? MIN_EXERCISES);
-  const myFullDays = ((myMonthRes.data ?? []) as RecRow[]).filter((r) =>
-    meetsAll(toReps(r), activeCount, FULL_TARGET),
+  const myQualifyingDays = ((myMonthRes.data ?? []) as RecRow[]).filter((r) =>
+    meetsAll(toReps(r), activeCount, HALF_TARGET),
   ).length;
 
   return {
     members: ((membersRes.data ?? []) as MemberRow[]).map(toMember),
     records: ((recordsRes.data ?? []) as RecRow[]).map(toRecord),
-    myFullDays,
+    myQualifyingDays,
   };
 }
 

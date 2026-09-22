@@ -6,6 +6,7 @@ import {
   dayLevel,
   exerciseLevel,
   meetsTierTarget,
+  memberStatusLabel,
   routineForMonth,
   statusLabel,
   type MonthSnapshot,
@@ -17,6 +18,7 @@ export {
   activeExercises,
   dayLevel,
   exerciseLevel,
+  memberStatusLabel,
   routineForMonth,
   statusLabel,
 };

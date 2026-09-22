@@ -17,7 +17,7 @@ import {
 import {
   activeExercises,
   exerciseLevelLabel,
-  statusLabel,
+  memberStatusLabel,
 } from "@/lib/member-ui";
 import { exerciseLevel } from "@/lib/progression";
 
@@ -257,7 +257,7 @@ function LeaderboardPage() {
                         </span>
                         {showDaysMetric && (
                           <span className="mt-0.5 block truncate text-xs font-semibold tracking-[0.15em] text-muted-foreground">
-                            {statusLabel(row.statusId, row.gender)}
+                            {memberStatusLabel(row.statusId, row.activeCount, row.gender)}
                           </span>
                         )}
                       </span>

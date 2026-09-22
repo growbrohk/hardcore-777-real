@@ -61,6 +61,13 @@ export function statusLabel(id: string, gender: Gender = "man"): string {
   return `${baseLabel(count, tier)} ${gender === "woman" ? "WOMAN" : "MAN"}`;
 }
 
+/** Half titles step up with the unlocked count; full stays lagged (ONE PUNCH + 4). */
+export function memberStatusLabel(id: string, activeCount: number, gender: Gender = "man"): string {
+  const { count, tier } = parseStatus(id);
+  const shown = tier === "half" && activeCount > count ? statusId(activeCount, tier) : id;
+  return statusLabel(shown, gender);
+}
+
 export function totalReps(reps: Reps): number {
   return EXERCISE_KEYS.reduce((sum, k) => sum + (reps[k] || 0), 0);
 }
@@ -117,7 +124,7 @@ export interface MonthResult {
   qualifyingDays: number;
   /** Full days against the earned routine (used for the unlock counter). */
   fullDays: number;
-  /** Exercises active next month (one more when a full routine was held). */
+  /** Exercises active next month (one more when the current routine was held). */
   activeCount: number;
   unlocked: boolean;
 }
@@ -125,7 +132,7 @@ export interface MonthResult {
 /**
  * Highest routine held on at least 21 different days of one calendar month.
  * Only grades up to `currentCount` (exercises the member had active that month).
- * Unlocks only when the full current routine was maintained.
+ * Unlocks when the whole current routine was held at half or full.
  */
 export function evaluateMonth(days: Reps[], currentCount: number): MonthResult {
   const cap = clampCount(currentCount);
@@ -134,7 +141,7 @@ export function evaluateMonth(days: Reps[], currentCount: number): MonthResult {
       const target = tier === "full" ? FULL_TARGET : HALF_TARGET;
       const qualifying = days.filter((d) => meetsAll(d, count, target)).length;
       if (qualifying >= QUALIFYING_DAYS) {
-        const unlocked = tier === "full" && count === cap && count < MAX_EXERCISES;
+        const unlocked = count === cap && count < MAX_EXERCISES;
         return {
           statusId: statusId(count, tier),
           count,

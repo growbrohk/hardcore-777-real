@@ -28,8 +28,8 @@ export interface BoardMemberDTO extends MemberDTO {
 export interface BoardDTO {
   members: MemberDTO[];
   records: RecordDTO[];
-  /** Full days this calendar month for the signed-in member's routine. */
-  myFullDays: number;
+  /** Days this calendar month that hit ≥50 on every active exercise. */
+  myQualifyingDays: number;
 }
 
 export interface LeaderboardRowDTO {

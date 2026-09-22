@@ -7,6 +7,7 @@ import {
   QUALIFYING_DAYS,
   evaluateMonth,
   meetsAll,
+  memberStatusLabel,
   routineForMonth,
 } from "./progression";
 
@@ -75,6 +76,49 @@ describe("evaluateMonth", () => {
     expect(result.statusId).toBe("full_7");
     expect(result.activeCount).toBe(7);
     expect(result.unlocked).toBe(false);
+  });
+
+  test("21 half days at 3 unlocks 4th as HALF PUNCH PUNCH", () => {
+    const days = Array.from({ length: 21 }, () => fullRoutine(3, HALF_TARGET));
+    const result = evaluateMonth(days, 3);
+    expect(result.statusId).toBe("half_3");
+    expect(result.activeCount).toBe(4);
+    expect(result.unlocked).toBe(true);
+    expect(memberStatusLabel(result.statusId, result.activeCount, "man")).toBe(
+      "HALF PUNCH PUNCH MAN",
+    );
+  });
+
+  test("20 half days at 3 does not unlock", () => {
+    const days = Array.from({ length: 20 }, () => fullRoutine(3, HALF_TARGET));
+    const result = evaluateMonth(days, 3);
+    expect(result.statusId).toBe(DEFAULT_STATUS_ID);
+    expect(result.activeCount).toBe(3);
+    expect(result.unlocked).toBe(false);
+  });
+
+  test("21 half days at 4 unlocks 5th as HALF PUNCHES", () => {
+    const days = Array.from({ length: 21 }, () => fullRoutine(4, HALF_TARGET));
+    const result = evaluateMonth(days, 4);
+    expect(result.statusId).toBe("half_4");
+    expect(result.activeCount).toBe(5);
+    expect(result.unlocked).toBe(true);
+    expect(memberStatusLabel(result.statusId, result.activeCount, "man")).toBe("HALF PUNCHES MAN");
+  });
+
+  test("21 half days of 3 with 4 active demotes, no unlock", () => {
+    const days = Array.from({ length: 21 }, () => fullRoutine(3, HALF_TARGET));
+    const result = evaluateMonth(days, 4);
+    expect(result.statusId).toBe("half_3");
+    expect(result.activeCount).toBe(3);
+    expect(result.unlocked).toBe(false);
+    expect(memberStatusLabel(result.statusId, result.activeCount, "man")).toBe("HALF PUNCH MAN");
+  });
+});
+
+describe("memberStatusLabel", () => {
+  test("full stay lagged: full_3 + 4 active is still ONE PUNCH", () => {
+    expect(memberStatusLabel("full_3", 4, "man")).toBe("ONE PUNCH MAN");
   });
 });
 

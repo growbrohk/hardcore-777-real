@@ -12,8 +12,8 @@ import {
   QUALIFYING_DAYS,
   readUnlockSeen,
   recordToReps,
+  memberStatusLabel,
   routineTarget,
-  statusLabel,
 } from "@/lib/member-ui";
 import { activeTotalReps } from "@/lib/progression";
 import { hasAnyReps, isComplete } from "@/lib/stats";
@@ -54,7 +54,7 @@ function TodayPage() {
   const [members, setMembers] = useState<MemberDTO[]>([]);
   const [records, setRecords] = useState<Record<string, RecordDTO>>({});
   const [mine, setMine] = useState<Reps>({ ...ZERO_REPS });
-  const [myFullDays, setMyFullDays] = useState(0);
+  const [myQualifyingDays, setMyQualifyingDays] = useState(0);
   const [loaded, setLoaded] = useState(false);
   const [sync, setSync] = useState<SyncState>("synced");
   const [showUnlock, setShowUnlock] = useState(false);
@@ -92,7 +92,7 @@ function TodayPage() {
     try {
       const board = await getTodayBoard({ data: { token, date } });
       setMembers(board.members);
-      setMyFullDays(board.myFullDays);
+      setMyQualifyingDays(board.myQualifyingDays);
       const map: Record<string, RecordDTO> = {};
       for (const r of board.records) map[r.memberId] = r;
       setRecords(map);
@@ -249,7 +249,7 @@ function TodayPage() {
           {activeCount < EXERCISES.length && (
             <section className="mt-3 border border-border bg-card px-4 py-3">
               <p className="tnum text-center text-sm font-bold tracking-[0.2em]">
-                {myFullDays} / {QUALIFYING_DAYS} FULL DAYS
+                {myQualifyingDays} / {QUALIFYING_DAYS} DAYS
               </p>
               {nextUnlock && (
                 <p className="mt-1 text-center text-xs font-semibold tracking-[0.25em] text-muted-foreground">
@@ -314,7 +314,7 @@ function TodayPage() {
             onClick={(e) => e.stopPropagation()}
           >
             <p className="text-center text-xl font-bold tracking-[0.2em] text-primary">
-              {statusLabel(member.unlock.statusId, member.gender).replace(/ MAN| WOMAN$/, "")}{" "}
+              {memberStatusLabel(member.unlock.statusId, member.unlock.activeCount, member.gender).replace(/ MAN| WOMAN$/, "")}{" "}
               UNLOCKED
             </p>
             <p className="mt-4 text-center text-sm font-bold tracking-widest text-muted-foreground">

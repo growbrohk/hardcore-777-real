@@ -20,8 +20,8 @@ import {
   dayCountsForMe,
   recordToReps,
   routineForMonth,
+  memberStatusLabel,
   routineTarget,
-  statusLabel,
   type MonthSnapshot,
 } from "@/lib/member-ui";
 import { dayLevel } from "@/lib/progression";
@@ -132,7 +132,7 @@ function MePage() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">{member.name.toUpperCase()}</h1>
           <p className="mt-1 text-sm font-semibold tracking-[0.3em] text-muted-foreground">
-            {statusLabel(member.statusId, member.gender)}
+            {memberStatusLabel(member.statusId, member.activeCount, member.gender)}
           </p>
         </div>
         <button
