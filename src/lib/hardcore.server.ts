@@ -538,6 +538,9 @@ export async function saveRecord(
   date: string,
   reps: Partial<Reps>,
 ): Promise<RecordDTO> {
+  if (clampTrustedClientDate(date) !== date) {
+    throw new Error("Can only log today's reps");
+  }
   const memberId = await memberIdFromToken(token);
   const memberRow = await loadMemberRow(memberId);
   const loggable = new Set(activeKeys(clampCount(memberRow.active_count ?? MIN_EXERCISES)));

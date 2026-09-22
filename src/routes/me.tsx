@@ -107,6 +107,7 @@ function MePage() {
   const repsFor = (date: string): Reps => recordToReps(records[date]);
 
   const saveDay = async (date: string, reps: Reps): Promise<boolean> => {
+    if (date !== todayLocal()) return false;
     const ok = await syncRecord(token, date, reps);
     if (ok) {
       setRecords((prev) => ({ ...prev, [date]: { memberId: member.id, date, ...reps } }));
@@ -249,6 +250,7 @@ function MePage() {
           date={selected}
           initial={repsFor(selected)}
           activeCount={activeCount}
+          readOnly={selected !== today}
           onClose={() => setSelected(null)}
           onSave={saveDay}
         />
@@ -272,12 +274,14 @@ function DaySheet({
   date,
   initial,
   activeCount,
+  readOnly,
   onClose,
   onSave,
 }: {
   date: string;
   initial: Reps;
   activeCount: number;
+  readOnly: boolean;
   onClose: () => void;
   onSave: (date: string, reps: Reps) => Promise<boolean>;
 }) {
@@ -292,6 +296,7 @@ function DaySheet({
   const complete = exercises.every((ex) => reps[ex.key] >= 100);
 
   const save = async () => {
+    if (readOnly) return;
     setSaving(true);
     const ok = await onSave(date, reps);
     setSaving(false);
@@ -326,6 +331,7 @@ function DaySheet({
               key={ex.key}
               label={ex.label}
               value={reps[ex.key]}
+              readOnly={readOnly}
               onChange={(v) => setReps({ ...reps, [ex.key]: v })}
             />
           ))}
@@ -341,13 +347,15 @@ function DaySheet({
           </p>
         )}
 
-        <button
-          onClick={save}
-          disabled={!dirty || saving}
-          className="mt-4 h-14 w-full bg-primary text-lg font-bold tracking-[0.25em] text-primary-foreground disabled:opacity-30"
-        >
-          {saving ? "SAVING…" : "SAVE"}
-        </button>
+        {!readOnly && (
+          <button
+            onClick={save}
+            disabled={!dirty || saving}
+            className="mt-4 h-14 w-full bg-primary text-lg font-bold tracking-[0.25em] text-primary-foreground disabled:opacity-30"
+          >
+            {saving ? "SAVING…" : "SAVE"}
+          </button>
+        )}
       </div>
     </div>
   );
@@ -356,10 +364,12 @@ function DaySheet({
 function RepAdjuster({
   label,
   value,
+  readOnly,
   onChange,
 }: {
   label: string;
   value: number;
+  readOnly: boolean;
   onChange: (v: number) => void;
 }) {
   const [editing, setEditing] = useState(false);
@@ -371,12 +381,13 @@ function RepAdjuster({
       <span className="flex items-center gap-1">
         <button
           onClick={() => onChange(clampRep(value - 10))}
+          disabled={readOnly}
           aria-label={`Minus 10 ${label.toLowerCase()}`}
-          className="flex h-11 w-11 items-center justify-center border border-border active:bg-muted"
+          className="flex h-11 w-11 items-center justify-center border border-border active:bg-muted disabled:opacity-30"
         >
           <Minus className="h-4 w-4" strokeWidth={3} />
         </button>
-        {editing ? (
+        {editing && !readOnly ? (
           <input
             autoFocus
             inputMode="numeric"
@@ -394,18 +405,21 @@ function RepAdjuster({
         ) : (
           <button
             onClick={() => {
+              if (readOnly) return;
               setDraft(String(value));
               setEditing(true);
             }}
-            className="tnum flex h-11 w-16 items-center justify-center text-xl font-bold"
+            disabled={readOnly}
+            className="tnum flex h-11 w-16 items-center justify-center text-xl font-bold disabled:opacity-70"
           >
             {value}
           </button>
         )}
         <button
           onClick={() => onChange(clampRep(value + 10))}
+          disabled={readOnly}
           aria-label={`Plus 10 ${label.toLowerCase()}`}
-          className="flex h-11 w-11 items-center justify-center border border-border active:bg-muted"
+          className="flex h-11 w-11 items-center justify-center border border-border active:bg-muted disabled:opacity-30"
         >
           <Plus className="h-4 w-4" strokeWidth={3} />
         </button>
