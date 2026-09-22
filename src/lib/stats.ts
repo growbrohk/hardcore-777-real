@@ -25,31 +25,31 @@ export const totalReps = sumReps;
 export const hasAnyReps = anyReps;
 
 /** A day counts as complete when every ACTIVE exercise reached 100. */
-export const isComplete = (r: Reps, count = 3): boolean => meetsAll(r, count, FULL_TARGET);
+export const isComplete = (r: Reps, count: number): boolean => meetsAll(r, count, FULL_TARGET);
 
 /** Half completion: every active exercise reached at least 50. */
-export const isHalf = (r: Reps, count = 3): boolean => meetsAll(r, count, HALF_TARGET);
+export const isHalf = (r: Reps, count: number): boolean => meetsAll(r, count, HALF_TARGET);
 
 /** Rep counts never go below 0. */
 export const clampRep = (n: number): number => Math.max(0, Math.round(n));
 
 /**
- * Consecutive completed days ending today — but if today isn't complete yet,
+ * Consecutive qualifying days ending today — if today doesn't qualify yet,
  * count back from yesterday so the streak doesn't vanish at midnight.
  */
-export function currentStreak(completedDates: Set<string>, today: string): number {
-  let cursor = completedDates.has(today) ? today : addDaysISO(today, -1);
+export function currentStreak(qualifyingDates: Set<string>, today: string): number {
+  let cursor = qualifyingDates.has(today) ? today : addDaysISO(today, -1);
   let streak = 0;
-  while (completedDates.has(cursor)) {
+  while (qualifyingDates.has(cursor)) {
     streak += 1;
     cursor = addDaysISO(cursor, -1);
   }
   return streak;
 }
 
-/** Longest historical run of consecutive completed days. */
-export function longestStreak(completedDates: Set<string>): number {
-  const sorted = [...completedDates].sort();
+/** Longest historical run of consecutive qualifying days. */
+export function longestStreak(qualifyingDates: Set<string>): number {
+  const sorted = [...qualifyingDates].sort();
   let best = 0;
   let run = 0;
   let prev: string | null = null;

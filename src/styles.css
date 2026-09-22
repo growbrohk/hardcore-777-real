@@ -39,6 +39,7 @@
   --color-ring-offset-background: var(--background);
   --color-complete: var(--complete);
   --color-partial: var(--partial);
+  --color-half: var(--half);
   --color-idle: var(--idle);
   --font-sans: "Barlow Condensed", "Arial Narrow", "Helvetica Neue", sans-serif;
 }
@@ -66,6 +67,7 @@
   --ring: oklch(0.681 0.213 40.5);
   --complete: oklch(0.72 0.19 150);
   --partial: oklch(0.79 0.15 85);
+  --half: oklch(0.78 0.16 75);
   --idle: oklch(0.42 0 0);
 }
 

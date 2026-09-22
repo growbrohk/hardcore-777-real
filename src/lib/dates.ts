@@ -86,6 +86,13 @@ export function monthStart(iso: string): string {
   return `${iso.slice(0, 7)}-01`;
 }
 
+/** Calendar month key "YYYY-MM" for the month before `month`. */
+export function prevMonthKey(month: string): string {
+  const y = Number(month.slice(0, 4));
+  const m = Number(month.slice(5, 7));
+  return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, "0")}`;
+}
+
 /** Last day (ISO) of the month containing iso. */
 export function monthEnd(iso: string): string {
   return `${iso.slice(0, 7)}-${String(daysInMonth(iso)).padStart(2, "0")}`;

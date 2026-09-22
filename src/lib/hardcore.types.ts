@@ -1,6 +1,6 @@
 // Shared DTO types — safe to import from client and server code.
 import type { ExerciseKey, Reps } from "./exercises";
-import type { Gender } from "./progression";
+import type { Gender, MonthSnapshot } from "./progression";
 
 export interface MemberDTO {
   id: string;
@@ -39,6 +39,8 @@ export interface LeaderboardRowDTO {
   gender: Gender;
   statusId: string;
   activeCount: number;
+  /** Exercises in the routine for this leaderboard period (month-aware). */
+  periodCount: number;
   daysCompleted: number;
   totalReps: number;
   complete: boolean;
@@ -48,4 +50,10 @@ export interface LeaderboardRowDTO {
   full: Record<ExerciseKey, number>;
   /** Days each exercise landed in 50–99. */
   half: Record<ExerciseKey, number>;
+}
+
+export interface MyHistoryDTO {
+  member: MemberDTO;
+  records: RecordDTO[];
+  monthSnapshots: Record<string, MonthSnapshot>;
 }

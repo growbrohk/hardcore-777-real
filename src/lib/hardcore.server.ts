@@ -4,10 +4,18 @@
 // tables are fully locked by RLS; every read/write goes through this module
 // with the service-role client after the token is verified.
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import type { BoardDTO, LeaderboardRowDTO, MemberDTO, RecordDTO } from "./hardcore.types";
+import { addDaysISO, prevMonthKey } from "./dates";
+import type {
+  BoardDTO,
+  LeaderboardRowDTO,
+  MemberDTO,
+  MyHistoryDTO,
+  RecordDTO,
+} from "./hardcore.types";
 import {
   EXERCISE_KEYS,
   MIN_EXERCISES,
+  activeKeys,
   clampCount,
   emptyReps,
   type ExerciseKey,
@@ -20,10 +28,18 @@ import {
   evaluateMonth,
   meetsAll,
   parseStatus,
+  routineForMonth,
   type Gender,
+  type MonthSnapshot,
 } from "./progression";
 
-export type { BoardDTO, LeaderboardRowDTO, MemberDTO, RecordDTO } from "./hardcore.types";
+export type {
+  BoardDTO,
+  LeaderboardRowDTO,
+  MemberDTO,
+  MyHistoryDTO,
+  RecordDTO,
+} from "./hardcore.types";
 
 const enc = new TextEncoder();
 const dec = new TextDecoder();
@@ -179,10 +195,13 @@ function monthKey(date: string): string {
   return date.slice(0, 7);
 }
 
-function prevMonthKey(month: string): string {
-  const y = Number(month.slice(0, 4));
-  const m = Number(month.slice(5, 7));
-  return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, "0")}`;
+/** Reject client dates far from server UTC so progression cannot be spoofed. */
+function clampTrustedClientDate(iso: string): string {
+  const utcToday = new Date().toISOString().slice(0, 10);
+  const lo = addDaysISO(utcToday, -1);
+  const hi = addDaysISO(utcToday, 1);
+  if (iso >= lo && iso <= hi) return iso;
+  return utcToday;
 }
 
 function monthBounds(month: string): [string, string] {
@@ -221,9 +240,11 @@ async function monthReps(memberId: string, month: string): Promise<Reps[]> {
  * no duplicate unlocks — one deterministic result per member/month.
  */
 async function ensureProgression(row: MemberRow, today: string): Promise<MemberRow> {
-  const currentMonth = monthKey(today);
+  const trusted = clampTrustedClientDate(today);
+  const currentMonth = monthKey(trusted);
   if (row.status_month === currentMonth) return row;
   const prev = prevMonthKey(currentMonth);
+  const gradingCount = clampCount(row.active_count ?? MIN_EXERCISES);
 
   const existing = await supabaseAdmin
     .from("member_month_progress")
@@ -234,7 +255,8 @@ async function ensureProgression(row: MemberRow, today: string): Promise<MemberR
 
   let progress = existing.data;
   if (!progress) {
-    const result = evaluateMonth(await monthReps(row.id, prev));
+    const result = evaluateMonth(await monthReps(row.id, prev), gradingCount);
+    // active_count and unlocked_count both store the routine size for the following month.
     await supabaseAdmin.from("member_month_progress").insert({
       member_id: row.id,
       month: prev,
@@ -363,7 +385,7 @@ export async function signup(
 
 export async function memberFromToken(token: string, today: string): Promise<MemberDTO> {
   const memberId = await memberIdFromToken(token);
-  const row = await ensureProgression(await loadMemberRow(memberId), today);
+  const row = await ensureProgression(await loadMemberRow(memberId), clampTrustedClientDate(today));
   return toMember(row);
 }
 
@@ -379,9 +401,34 @@ export async function setGender(token: string, gender: Gender): Promise<MemberDT
   return toMember(data as MemberRow);
 }
 
+async function loadSnapshotMaps(
+  memberIds: string[],
+  monthLo: string,
+  monthHi: string,
+): Promise<Map<string, Record<string, MonthSnapshot>>> {
+  if (memberIds.length === 0) return new Map();
+  const { data } = await supabaseAdmin
+    .from("member_month_progress")
+    .select("member_id, month, status_id, active_count")
+    .in("member_id", memberIds)
+    .gte("month", monthLo)
+    .lte("month", monthHi);
+  const byMember = new Map<string, Record<string, MonthSnapshot>>();
+  for (const row of data ?? []) {
+    const id = row.member_id as string;
+    const map = byMember.get(id) ?? {};
+    map[row.month as string] = {
+      statusId: row.status_id as string,
+      activeCount: clampCount(row.active_count as number),
+    };
+    byMember.set(id, map);
+  }
+  return byMember;
+}
+
 export async function getBoard(token: string, date: string): Promise<BoardDTO> {
   const memberId = await memberIdFromToken(token);
-  const me = await ensureProgression(await loadMemberRow(memberId), date);
+  const me = await ensureProgression(await loadMemberRow(memberId), clampTrustedClientDate(date));
   const month = monthKey(date);
   const [from, to] = monthBounds(month);
 
@@ -415,9 +462,29 @@ export async function saveRecord(
   reps: Partial<Reps>,
 ): Promise<RecordDTO> {
   const memberId = await memberIdFromToken(token);
+  const memberRow = await loadMemberRow(memberId);
+  const loggable = new Set(activeKeys(clampCount(memberRow.active_count ?? MIN_EXERCISES)));
+  const preserved = new Set(
+    activeKeys(clampCount(memberRow.highest_unlocked ?? MIN_EXERCISES)),
+  );
+
+  const { data: existing } = await supabaseAdmin
+    .from("daily_records")
+    .select(REC_COLS)
+    .eq("member_id", memberId)
+    .eq("date", date)
+    .maybeSingle();
+  const prior = existing ? toReps(existing as RecRow) : emptyReps();
+
   const clean: Reps = emptyReps();
   for (const k of EXERCISE_KEYS) {
-    clean[k] = Math.min(Math.max(0, Math.trunc(Number(reps[k] ?? 0) || 0)), MAX_REPS);
+    if (loggable.has(k)) {
+      clean[k] = Math.min(Math.max(0, Math.trunc(Number(reps[k] ?? 0) || 0)), MAX_REPS);
+    } else if (preserved.has(k)) {
+      clean[k] = prior[k];
+    } else {
+      clean[k] = 0;
+    }
   }
   const { data, error } = await supabaseAdmin
     .from("daily_records")
@@ -445,18 +512,40 @@ export async function getLeaderboard(
     end = `${y}-12-31`;
   }
 
-  const [membersRes, recordsRes] = await Promise.all([
-    supabaseAdmin.from("members").select(MEMBER_COLS).order("name", { ascending: true }),
+  const snapLo = prevMonthKey(monthKey(start));
+  const snapHi = prevMonthKey(monthKey(end));
+
+  const membersRes = await supabaseAdmin
+    .from("members")
+    .select(MEMBER_COLS)
+    .order("name", { ascending: true });
+  if (membersRes.error) throw new Error("Failed to load leaderboard");
+
+  const memberRows = (membersRes.data ?? []) as MemberRow[];
+  const [snapMaps, recordsResFinal] = await Promise.all([
+    loadSnapshotMaps(
+      memberRows.map((r) => r.id),
+      snapLo,
+      snapHi,
+    ),
     supabaseAdmin.from("daily_records").select(REC_COLS).gte("date", start).lte("date", end),
   ]);
-  if (membersRes.error || recordsRes.error) throw new Error("Failed to load leaderboard");
+  if (recordsResFinal.error) throw new Error("Failed to load leaderboard");
+
+  const refMonth = monthKey(ref);
+  const periodRoutineCount = (snap: Record<string, MonthSnapshot>, m: MemberDTO) =>
+    period === "year"
+      ? m.activeCount
+      : routineForMonth(snap, refMonth).count;
 
   const zeroCounts = () =>
     Object.fromEntries(EXERCISE_KEYS.map((k) => [k, 0])) as Record<ExerciseKey, number>;
 
   const byMember = new Map<string, LeaderboardRowDTO>();
-  for (const row of (membersRes.data ?? []) as MemberRow[]) {
+  for (const row of memberRows) {
     const m = toMember(row);
+    const snap = snapMaps.get(m.id) ?? {};
+    const periodCount = periodRoutineCount(snap, m);
     byMember.set(m.id, {
       memberId: m.id,
       name: m.name,
@@ -464,6 +553,7 @@ export async function getLeaderboard(
       gender: m.gender,
       statusId: m.statusId,
       activeCount: m.activeCount,
+      periodCount,
       daysCompleted: 0,
       totalReps: 0,
       complete: false,
@@ -473,18 +563,20 @@ export async function getLeaderboard(
     });
   }
 
-  for (const raw of (recordsRes.data ?? []) as RecRow[]) {
+  for (const raw of (recordsResFinal.data ?? []) as RecRow[]) {
     const row = byMember.get(raw.member_id);
     if (!row) continue;
     const reps = toReps(raw);
-    const complete = meetsAll(reps, row.activeCount, FULL_TARGET);
+    const snap = snapMaps.get(raw.member_id) ?? {};
+    const dayMonth = monthKey(raw.date);
+    const routineCount = routineForMonth(snap, dayMonth).count;
+    const complete = meetsAll(reps, routineCount, FULL_TARGET);
     if (complete) row.daysCompleted += 1;
     if (period === "day") row.complete = complete;
     for (const k of EXERCISE_KEYS) {
       const v = reps[k];
       row.reps[k] += v;
       row.totalReps += v;
-      // A 100+ day is FULL only — never counted as HALF as well.
       if (v >= FULL_TARGET) row.full[k] += 1;
       else if (v >= HALF_TARGET) row.half[k] += 1;
     }
@@ -492,17 +584,36 @@ export async function getLeaderboard(
   return [...byMember.values()];
 }
 
-export async function getMyRecords(
-  token: string,
-  today: string,
-): Promise<{ member: MemberDTO; records: RecordDTO[] }> {
+async function loadMemberSnapshots(memberId: string): Promise<Record<string, MonthSnapshot>> {
+  const { data } = await supabaseAdmin
+    .from("member_month_progress")
+    .select("month, status_id, active_count")
+    .eq("member_id", memberId);
+  const map: Record<string, MonthSnapshot> = {};
+  for (const row of data ?? []) {
+    map[row.month as string] = {
+      statusId: row.status_id as string,
+      activeCount: clampCount(row.active_count as number),
+    };
+  }
+  return map;
+}
+
+export async function getMyRecords(token: string, today: string): Promise<MyHistoryDTO> {
   const memberId = await memberIdFromToken(token);
-  const row = await ensureProgression(await loadMemberRow(memberId), today);
-  const { data, error } = await supabaseAdmin
-    .from("daily_records")
-    .select(REC_COLS)
-    .eq("member_id", memberId)
-    .order("date", { ascending: true });
-  if (error) throw new Error("Failed to load history");
-  return { member: toMember(row), records: ((data ?? []) as RecRow[]).map(toRecord) };
+  const row = await ensureProgression(await loadMemberRow(memberId), clampTrustedClientDate(today));
+  const [recordsRes, monthSnapshots] = await Promise.all([
+    supabaseAdmin
+      .from("daily_records")
+      .select(REC_COLS)
+      .eq("member_id", memberId)
+      .order("date", { ascending: true }),
+    loadMemberSnapshots(memberId),
+  ]);
+  if (recordsRes.error) throw new Error("Failed to load history");
+  return {
+    member: toMember(row),
+    records: ((recordsRes.data ?? []) as RecRow[]).map(toRecord),
+    monthSnapshots,
+  };
 }

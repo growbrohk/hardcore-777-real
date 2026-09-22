@@ -4,8 +4,19 @@ import { AppShell, useSession } from "@/components/AppShell";
 import { RepCard } from "@/components/RepCard";
 import { getTodayBoard } from "@/lib/hardcore.functions";
 import type { MemberDTO, RecordDTO } from "@/lib/hardcore.types";
+import { EXERCISES, ZERO_REPS, type Reps } from "@/lib/exercises";
 import { formatHeaderDate, todayLocal } from "@/lib/dates";
-import { hasAnyReps, isComplete, totalReps, type Reps } from "@/lib/stats";
+import {
+  activeExercises,
+  markUnlockSeen,
+  QUALIFYING_DAYS,
+  readUnlockSeen,
+  recordToReps,
+  routineTarget,
+  statusLabel,
+} from "@/lib/member-ui";
+import { activeTotalReps } from "@/lib/progression";
+import { hasAnyReps, isComplete } from "@/lib/stats";
 import { readOutbox, syncRecord } from "@/lib/outbox";
 
 export const Route = createFileRoute("/")({
@@ -37,20 +48,30 @@ function TodayRoute() {
 
 type SyncState = "synced" | "saving" | "unsynced";
 
-const ZERO: Reps = { pushups: 0, situps: 0, squats: 0 };
-
 function TodayPage() {
   const { token, member } = useSession();
   const [date] = useState(todayLocal);
   const [members, setMembers] = useState<MemberDTO[]>([]);
   const [records, setRecords] = useState<Record<string, RecordDTO>>({});
-  const [mine, setMine] = useState<Reps>(ZERO);
+  const [mine, setMine] = useState<Reps>({ ...ZERO_REPS });
+  const [myFullDays, setMyFullDays] = useState(0);
   const [loaded, setLoaded] = useState(false);
   const [sync, setSync] = useState<SyncState>("synced");
+  const [showUnlock, setShowUnlock] = useState(false);
 
-  const latest = useRef<Reps>(ZERO);
+  const latest = useRef<Reps>({ ...ZERO_REPS });
   const dirty = useRef(false);
   const saveTimer = useRef<number | undefined>(undefined);
+
+  const activeCount = member.activeCount;
+  const target = routineTarget(activeCount);
+  const nextUnlock = activeCount < EXERCISES.length ? EXERCISES[activeCount] : null;
+
+  useEffect(() => {
+    if (!member.unlock) return;
+    const seen = readUnlockSeen(member.id, member.unlock.month, member.unlock.activeCount);
+    setShowUnlock(!seen);
+  }, [member]);
 
   const flush = useCallback(
     async (reps: Reps) => {
@@ -71,16 +92,14 @@ function TodayPage() {
     try {
       const board = await getTodayBoard({ data: { token, date } });
       setMembers(board.members);
+      setMyFullDays(board.myFullDays);
       const map: Record<string, RecordDTO> = {};
       for (const r of board.records) map[r.memberId] = r;
       setRecords(map);
       if (!dirty.current) {
         const pending = readOutbox(date);
         const server = map[member.id];
-        const effective: Reps = pending ??
-          (server
-            ? { pushups: server.pushups, situps: server.situps, squats: server.squats }
-            : ZERO);
+        const effective: Reps = pending ?? recordToReps(server);
         setMine(effective);
         latest.current = effective;
         if (pending) {
@@ -106,7 +125,6 @@ function TodayPage() {
     };
   }, [load]);
 
-  // Retry unsynced reps as soon as the connection returns.
   useEffect(() => {
     if (sync !== "unsynced") return;
     const retry = () => void flush(latest.current);
@@ -129,21 +147,38 @@ function TodayPage() {
     }, 400);
   };
 
-  const total = totalReps(mine);
-  const complete = isComplete(mine);
-  const pct = Math.min(100, Math.round((total / 300) * 100));
+  const total = activeTotalReps(mine, activeCount);
+  const complete = isComplete(mine, activeCount);
+  const pct = Math.min(100, Math.round((total / target) * 100));
 
   const groupRows = members
     .map((m) => {
       const rec: Reps =
-        m.id === member.id
-          ? mine
-          : (records[m.id] ?? ZERO);
-      return { member: m, reps: rec, total: totalReps(rec), complete: isComplete(rec) };
+        m.id === member.id ? mine : recordToReps(records[m.id]);
+      const count = m.activeCount;
+      return {
+        member: m,
+        reps: rec,
+        total: activeTotalReps(rec, count),
+        target: routineTarget(count),
+        complete: isComplete(rec, count),
+      };
     })
-    .sort((a, b) => b.total - a.total || Number(b.complete) - Number(a.complete) || a.member.name.localeCompare(b.member.name));
+    .sort(
+      (a, b) =>
+        b.total - a.total ||
+        Number(b.complete) - Number(a.complete) ||
+        a.member.name.localeCompare(b.member.name),
+    );
 
   const anyGroupReps = groupRows.some((r) => r.total > 0);
+
+  const dismissUnlock = () => {
+    if (member.unlock) {
+      markUnlockSeen(member.id, member.unlock.month, member.unlock.activeCount);
+    }
+    setShowUnlock(false);
+  };
 
   return (
     <div className="px-4 pt-safe">
@@ -172,21 +207,14 @@ function TodayPage() {
       ) : (
         <>
           <div className="mt-6 flex flex-col gap-3">
-            <RepCard
-              label="PUSH-UPS"
-              value={mine.pushups}
-              onCommit={(v) => commit({ ...mine, pushups: v })}
-            />
-            <RepCard
-              label="SIT-UPS"
-              value={mine.situps}
-              onCommit={(v) => commit({ ...mine, situps: v })}
-            />
-            <RepCard
-              label="SQUATS"
-              value={mine.squats}
-              onCommit={(v) => commit({ ...mine, squats: v })}
-            />
+            {activeExercises(activeCount).map((ex) => (
+              <RepCard
+                key={ex.key}
+                label={ex.label}
+                value={mine[ex.key]}
+                onCommit={(v) => commit({ ...mine, [ex.key]: v })}
+              />
+            ))}
           </div>
 
           <section className="mt-4 border border-border bg-card p-4">
@@ -199,7 +227,9 @@ function TodayPage() {
               </div>
             ) : (
               <div className="mb-3 flex items-baseline justify-between">
-                <span className="tnum text-2xl font-bold">{total} / 300 REPS</span>
+                <span className="tnum text-2xl font-bold">
+                  {total} / {target} REPS
+                </span>
                 <span className="tnum text-lg font-bold text-primary">{pct}%</span>
               </div>
             )}
@@ -209,12 +239,25 @@ function TodayPage() {
                 style={{ width: `${pct}%` }}
               />
             </div>
-            {complete && total > 300 && (
+            {complete && total > target && (
               <p className="tnum mt-2 text-right text-sm font-semibold text-muted-foreground">
                 {pct}% · BAR MAXED, REPS KEEP COUNTING
               </p>
             )}
           </section>
+
+          {activeCount < EXERCISES.length && (
+            <section className="mt-3 border border-border bg-card px-4 py-3">
+              <p className="tnum text-center text-sm font-bold tracking-[0.2em]">
+                {myFullDays} / {QUALIFYING_DAYS} FULL DAYS
+              </p>
+              {nextUnlock && (
+                <p className="mt-1 text-center text-xs font-semibold tracking-[0.25em] text-muted-foreground">
+                  NEXT UNLOCK · {nextUnlock.label}
+                </p>
+              )}
+            </section>
+          )}
 
           <section className="mt-6">
             <h2 className="text-sm font-bold tracking-[0.25em] text-muted-foreground">
@@ -250,7 +293,7 @@ function TodayPage() {
                       </span>
                     </span>
                     <span className="tnum text-lg font-semibold">
-                      {row.total} / 300{" "}
+                      {row.total} / {row.target}{" "}
                       {row.complete && <span className="text-complete">✓</span>}
                     </span>
                   </li>
@@ -259,6 +302,46 @@ function TodayPage() {
             )}
           </section>
         </>
+      )}
+
+      {showUnlock && member.unlock && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-background/90 px-4"
+          onClick={dismissUnlock}
+        >
+          <div
+            className="w-full max-w-md border-2 border-primary bg-card p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p className="text-center text-xl font-bold tracking-[0.2em] text-primary">
+              {statusLabel(member.unlock.statusId, member.gender).replace(/ MAN| WOMAN$/, "")}{" "}
+              UNLOCKED
+            </p>
+            <p className="mt-4 text-center text-sm font-bold tracking-widest text-muted-foreground">
+              YOU&apos;VE UNLOCKED:
+            </p>
+            <p className="mt-2 text-center text-2xl font-bold tracking-widest">
+              {activeExercises(member.unlock.activeCount).at(-1)?.label}
+            </p>
+            <p className="mt-6 text-center text-xs font-semibold tracking-[0.2em] text-muted-foreground">
+              YOUR NEW ROUTINE
+            </p>
+            <ul className="mt-2 flex flex-col gap-1 text-center text-sm font-bold tracking-widest">
+              {activeExercises(member.unlock.activeCount).map((ex) => (
+                <li key={ex.key}>
+                  100 {ex.label}
+                </li>
+              ))}
+            </ul>
+            <button
+              type="button"
+              onClick={dismissUnlock}
+              className="mt-6 h-12 w-full bg-primary text-sm font-bold tracking-[0.25em] text-primary-foreground"
+            >
+              LET&apos;S GO
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );

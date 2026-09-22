@@ -2,6 +2,7 @@
 // the exported declarations; all logic lives in hardcore.server.ts.
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
+import type { Reps } from "./exercises";
 import * as srv from "./hardcore.server";
 
 const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -57,7 +58,7 @@ export const saveMyRecord = createServerFn({ method: "POST" })
   .inputValidator((data) =>
     tokenSchema.extend({ date: dateSchema, reps: repsSchema }).parse(data),
   )
-  .handler(({ data }) => srv.saveRecord(data.token, data.date, data.reps));
+  .handler(({ data }) => srv.saveRecord(data.token, data.date, data.reps as Partial<Reps>));
 
 export const getLeaderboard = createServerFn({ method: "POST" })
   .inputValidator((data) =>

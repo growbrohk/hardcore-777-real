@@ -1,6 +1,7 @@
 // Single source of truth for the Punch progression system.
 // Pure functions only — used by the server (monthly calculation) and by every
 // screen (TODAY, ME, LEADERBOARD) so nothing is calculated twice differently.
+import { prevMonthKey } from "./dates";
 import {
   EXERCISE_KEYS,
   MAX_EXERCISES,
@@ -23,6 +24,11 @@ export interface StatusInfo {
   id: string;
   count: number;
   tier: Tier;
+}
+
+export interface MonthSnapshot {
+  statusId: string;
+  activeCount: number;
 }
 
 export const DEFAULT_STATUS_ID = "half_3";
@@ -55,11 +61,6 @@ export function statusLabel(id: string, gender: Gender = "man"): string {
   return `${baseLabel(count, tier)} ${gender === "woman" ? "WOMAN" : "MAN"}`;
 }
 
-/** Ordering of routines: more exercises wins, then full over half. */
-export function statusRank(count: number, tier: Tier): number {
-  return clampCount(count) * 2 + (tier === "full" ? 1 : 0);
-}
-
 export function totalReps(reps: Reps): number {
   return EXERCISE_KEYS.reduce((sum, k) => sum + (reps[k] || 0), 0);
 }
@@ -70,6 +71,10 @@ export function activeTotalReps(reps: Reps, count: number): number {
 
 export function meetsAll(reps: Reps, count: number, target: number): boolean {
   return activeKeys(count).every((k) => (reps[k] || 0) >= target);
+}
+
+export function meetsTierTarget(reps: Reps, count: number, tier: Tier): boolean {
+  return meetsAll(reps, count, tier === "full" ? FULL_TARGET : HALF_TARGET);
 }
 
 export function hasAnyReps(reps: Reps): boolean {
@@ -89,6 +94,20 @@ export function exerciseLevel(value: number): DayLevel {
   return value > 0 ? "partial" : "none";
 }
 
+/**
+ * The routine a member was on during calendar `month`, from the prior month's
+ * progression snapshot (which records the routine applied going forward).
+ */
+export function routineForMonth(
+  snapshots: Record<string, MonthSnapshot>,
+  month: string,
+): { count: number; tier: Tier } {
+  const snap = snapshots[prevMonthKey(month)];
+  if (!snap) return { count: MIN_EXERCISES, tier: "half" };
+  const { tier } = parseStatus(snap.statusId);
+  return { count: clampCount(snap.activeCount), tier };
+}
+
 export interface MonthResult {
   statusId: string;
   /** Exercises in the earned routine. */
@@ -105,15 +124,17 @@ export interface MonthResult {
 
 /**
  * Highest routine held on at least 21 different days of one calendar month.
- * Falls back to the starting routine when nothing qualifies.
+ * Only grades up to `currentCount` (exercises the member had active that month).
+ * Unlocks only when the full current routine was maintained.
  */
-export function evaluateMonth(days: Reps[]): MonthResult {
-  for (let count = MAX_EXERCISES; count >= MIN_EXERCISES; count--) {
+export function evaluateMonth(days: Reps[], currentCount: number): MonthResult {
+  const cap = clampCount(currentCount);
+  for (let count = cap; count >= MIN_EXERCISES; count--) {
     for (const tier of ["full", "half"] as Tier[]) {
       const target = tier === "full" ? FULL_TARGET : HALF_TARGET;
       const qualifying = days.filter((d) => meetsAll(d, count, target)).length;
       if (qualifying >= QUALIFYING_DAYS) {
-        const unlocked = tier === "full" && count < MAX_EXERCISES;
+        const unlocked = tier === "full" && count === cap && count < MAX_EXERCISES;
         return {
           statusId: statusId(count, tier),
           count,
@@ -131,7 +152,7 @@ export function evaluateMonth(days: Reps[]): MonthResult {
     count: MIN_EXERCISES,
     tier: "half",
     qualifyingDays: 0,
-    fullDays: days.filter((d) => meetsAll(d, MIN_EXERCISES, FULL_TARGET)).length,
+    fullDays: days.filter((d) => meetsAll(d, cap, FULL_TARGET)).length,
     activeCount: MIN_EXERCISES,
     unlocked: false,
   };

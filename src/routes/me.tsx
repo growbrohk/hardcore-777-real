@@ -4,6 +4,7 @@ import { ChevronLeft, ChevronRight, Minus, Plus, X } from "lucide-react";
 import { AppShell, useSession } from "@/components/AppShell";
 import { getMyHistory } from "@/lib/hardcore.functions";
 import type { RecordDTO } from "@/lib/hardcore.types";
+import { type Reps } from "@/lib/exercises";
 import {
   addDaysISO,
   addMonthsISO,
@@ -15,13 +16,20 @@ import {
   todayLocal,
 } from "@/lib/dates";
 import {
+  activeExercises as activeExList,
+  dayCountsForMe,
+  recordToReps,
+  routineForMonth,
+  routineTarget,
+  statusLabel,
+  type MonthSnapshot,
+} from "@/lib/member-ui";
+import { dayLevel } from "@/lib/progression";
+import {
   clampRep,
   currentStreak,
-  hasAnyReps,
-  isComplete,
   longestStreak,
   totalReps,
-  type Reps,
 } from "@/lib/stats";
 import { syncRecord } from "@/lib/outbox";
 import { clearStoredSession } from "@/lib/session";
@@ -47,23 +55,26 @@ function MeRoute() {
   );
 }
 
-const ZERO: Reps = { pushups: 0, situps: 0, squats: 0 };
 const WEEKDAYS = ["M", "T", "W", "T", "F", "S", "S"];
 
 function MePage() {
   const { token, member } = useSession();
   const navigate = useNavigate();
   const [records, setRecords] = useState<Record<string, RecordDTO>>({});
+  const [snapshots, setSnapshots] = useState<Record<string, MonthSnapshot>>({});
   const [loaded, setLoaded] = useState(false);
   const [cursor, setCursor] = useState(() => monthStart(todayLocal()));
   const [selected, setSelected] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const { records: rows } = await getMyHistory({ data: { token } });
+      const { records: rows, monthSnapshots } = await getMyHistory({
+        data: { token, today: todayLocal() },
+      });
       const map: Record<string, RecordDTO> = {};
       for (const r of rows) map[r.date] = r;
       setRecords(map);
+      setSnapshots(monthSnapshots);
     } catch {
       // offline — keep what we have
     } finally {
@@ -79,19 +90,21 @@ function MePage() {
   const allRecords = Object.values(records);
   const monthRecs = allRecords.filter((r) => r.date.startsWith(cursor.slice(0, 7)));
   const isCurrentMonth = cursor === monthStart(today);
+  const activeCount = member.activeCount;
 
-  const daysDone = monthRecs.filter((r) => isComplete(r)).length;
+  const daysDone = monthRecs.filter((r) =>
+    dayCountsForMe(recordToReps(r), snapshots, r.date),
+  ).length;
   const totalThisMonth = monthRecs.reduce((sum, r) => sum + totalReps(r), 0);
-  const completedDates = new Set(
-    allRecords.filter((r) => isComplete(r)).map((r) => r.date),
+  const qualifyingDates = new Set(
+    allRecords
+      .filter((r) => dayCountsForMe(recordToReps(r), snapshots, r.date))
+      .map((r) => r.date),
   );
-  const streak = currentStreak(completedDates, today);
-  const longest = longestStreak(completedDates);
+  const streak = currentStreak(qualifyingDates, today);
+  const longest = longestStreak(qualifyingDates);
 
-  const repsFor = (date: string): Reps => {
-    const r = records[date];
-    return r ? { pushups: r.pushups, situps: r.situps, squats: r.squats } : ZERO;
-  };
+  const repsFor = (date: string): Reps => recordToReps(records[date]);
 
   const saveDay = async (date: string, reps: Reps): Promise<boolean> => {
     const ok = await syncRecord(token, date, reps);
@@ -106,8 +119,7 @@ function MePage() {
     void navigate({ to: "/login", replace: true });
   };
 
-  // Calendar cells
-  const firstDow = (parseISODate(cursor).getDay() + 6) % 7; // Monday-first offset
+  const firstDow = (parseISODate(cursor).getDay() + 6) % 7;
   const cellCount = daysInMonth(cursor);
   const cells: (string | null)[] = [
     ...Array.from({ length: firstDow }, () => null),
@@ -120,7 +132,7 @@ function MePage() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">{member.name.toUpperCase()}</h1>
           <p className="mt-1 text-sm font-semibold tracking-[0.3em] text-muted-foreground">
-            YOUR RECORD
+            {statusLabel(member.statusId, member.gender)}
           </p>
         </div>
         <button
@@ -181,8 +193,9 @@ function MePage() {
               {cells.map((iso, i) => {
                 if (!iso) return <div key={`x${i}`} />;
                 const reps = repsFor(iso);
-                const complete = isComplete(reps);
-                const partial = !complete && hasAnyReps(reps);
+                const month = iso.slice(0, 7);
+                const routineCount = routineForMonth(snapshots, month).count;
+                const level = dayLevel(reps, routineCount);
                 const future = iso > today;
                 const isToday = iso === today;
                 return (
@@ -191,18 +204,20 @@ function MePage() {
                     disabled={future}
                     onClick={() => setSelected(iso)}
                     className={`tnum relative flex aspect-square flex-col items-center justify-center text-sm font-bold ${
-                      complete
+                      level === "full"
                         ? "bg-primary text-primary-foreground"
-                        : partial
-                          ? "border border-partial text-foreground"
-                          : "border border-border text-muted-foreground"
+                        : level === "half"
+                          ? "border-2 border-half bg-half/15 text-foreground"
+                          : level === "partial"
+                            ? "border border-partial text-foreground"
+                            : "border border-border text-muted-foreground"
                     } ${future ? "opacity-25" : ""}`}
                   >
                     {Number(iso.slice(8))}
                     {isToday && (
                       <span
                         className={`absolute bottom-1 h-1 w-1 rounded-full ${
-                          complete ? "bg-primary-foreground" : "bg-primary"
+                          level === "full" ? "bg-primary-foreground" : "bg-primary"
                         }`}
                       />
                     )}
@@ -211,9 +226,12 @@ function MePage() {
               })}
             </div>
 
-            <div className="mt-3 flex items-center gap-4 text-xs font-semibold tracking-widest text-muted-foreground">
+            <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-semibold tracking-widest text-muted-foreground">
               <span className="flex items-center gap-1.5">
                 <span className="h-3 w-3 bg-primary" /> COMPLETE
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="h-3 w-3 border-2 border-half bg-half/15" /> HALF
               </span>
               <span className="flex items-center gap-1.5">
                 <span className="h-3 w-3 border border-partial" /> PARTIAL
@@ -230,6 +248,7 @@ function MePage() {
         <DaySheet
           date={selected}
           initial={repsFor(selected)}
+          activeCount={activeCount}
           onClose={() => setSelected(null)}
           onSave={saveDay}
         />
@@ -252,11 +271,13 @@ function StatBox({ label, value, accent }: { label: string; value: string; accen
 function DaySheet({
   date,
   initial,
+  activeCount,
   onClose,
   onSave,
 }: {
   date: string;
   initial: Reps;
+  activeCount: number;
   onClose: () => void;
   onSave: (date: string, reps: Reps) => Promise<boolean>;
 }) {
@@ -264,13 +285,11 @@ function DaySheet({
   const [syncError, setSyncError] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const dirty =
-    reps.pushups !== initial.pushups ||
-    reps.situps !== initial.situps ||
-    reps.squats !== initial.squats;
-
-  const total = totalReps(reps);
-  const complete = isComplete(reps);
+  const exercises = activeExList(activeCount);
+  const dirty = exercises.some((ex) => reps[ex.key] !== initial[ex.key]);
+  const target = routineTarget(activeCount);
+  const total = exercises.reduce((sum, ex) => sum + reps[ex.key], 0);
+  const complete = exercises.every((ex) => reps[ex.key] >= 100);
 
   const save = async () => {
     setSaving(true);
@@ -302,25 +321,18 @@ function DaySheet({
         </div>
 
         <div className="mt-4 flex flex-col gap-2">
-          <RepAdjuster
-            label="PUSH-UPS"
-            value={reps.pushups}
-            onChange={(v) => setReps({ ...reps, pushups: v })}
-          />
-          <RepAdjuster
-            label="SIT-UPS"
-            value={reps.situps}
-            onChange={(v) => setReps({ ...reps, situps: v })}
-          />
-          <RepAdjuster
-            label="SQUATS"
-            value={reps.squats}
-            onChange={(v) => setReps({ ...reps, squats: v })}
-          />
+          {exercises.map((ex) => (
+            <RepAdjuster
+              key={ex.key}
+              label={ex.label}
+              value={reps[ex.key]}
+              onChange={(v) => setReps({ ...reps, [ex.key]: v })}
+            />
+          ))}
         </div>
 
         <p className="tnum mt-3 text-center text-sm font-semibold text-muted-foreground">
-          {total} / 300 REPS {complete && <span className="text-complete">✓ COMPLETE</span>}
+          {total} / {target} REPS {complete && <span className="text-complete">✓ COMPLETE</span>}
         </p>
 
         {syncError && (

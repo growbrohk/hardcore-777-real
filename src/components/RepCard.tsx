@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Check, Minus, Plus } from "lucide-react";
-import { DAILY_TARGET } from "@/lib/stats";
+import { DAILY_TARGET, HALF_DAILY_TARGET } from "@/lib/stats";
+import { exerciseLevel } from "@/lib/progression";
 
 interface RepCardProps {
   label: string;
@@ -16,7 +17,9 @@ export function RepCard({ label, value, onCommit }: RepCardProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
-  const done = value >= DAILY_TARGET;
+  const level = exerciseLevel(value);
+  const done = level === "full";
+  const half = level === "half";
 
   useEffect(() => {
     if (editing) inputRef.current?.select();
@@ -39,6 +42,9 @@ export function RepCard({ label, value, onCommit }: RepCardProps) {
             <Check className="size-4" strokeWidth={3} />
             DONE
           </span>
+        )}
+        {!done && half && (
+          <span className="text-sm font-bold tracking-widest text-half">HALF</span>
         )}
       </div>
 
@@ -78,7 +84,7 @@ export function RepCard({ label, value, onCommit }: RepCardProps) {
                 setEditing(true);
               }}
               className={`tnum w-full text-center text-6xl font-bold leading-none outline-none ${
-                done ? "text-complete" : ""
+                done ? "text-complete" : half ? "text-half" : ""
               }`}
             >
               {value}
@@ -100,6 +106,9 @@ export function RepCard({ label, value, onCommit }: RepCardProps) {
       <div className="border-t border-border px-4 py-1.5 text-center">
         <span className="tnum text-sm font-semibold tracking-widest text-muted-foreground">
           {value} / {DAILY_TARGET}
+          {!done && value >= HALF_DAILY_TARGET && (
+            <span className="ml-2 text-half">· 50+</span>
+          )}
         </span>
       </div>
     </section>
