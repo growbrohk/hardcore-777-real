@@ -48,6 +48,16 @@ function TodayRoute() {
 
 type SyncState = "synced" | "saving" | "unsynced";
 
+const PAGE_SIZE = 7;
+
+type GroupRow = {
+  member: MemberDTO;
+  reps: Reps;
+  total: number;
+  target: number;
+  complete: boolean;
+};
+
 function TodayPage() {
   const { token, member } = useSession();
   const [date] = useState(todayLocal);
@@ -58,6 +68,7 @@ function TodayPage() {
   const [loaded, setLoaded] = useState(false);
   const [sync, setSync] = useState<SyncState>("synced");
   const [showUnlock, setShowUnlock] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
   const latest = useRef<Reps>({ ...ZERO_REPS });
   const dirty = useRef(false);
@@ -172,6 +183,11 @@ function TodayPage() {
     );
 
   const anyGroupReps = groupRows.some((r) => r.total > 0);
+  const visible = groupRows.slice(0, visibleCount);
+  const remaining = Math.max(0, groupRows.length - visibleCount);
+  const myRank = groupRows.findIndex((r) => r.member.id === member.id);
+  const myRow = myRank >= 0 ? groupRows[myRank] : undefined;
+  const pinMe = myRow !== undefined && myRank >= visibleCount;
 
   const dismissUnlock = () => {
     if (member.unlock) {
@@ -270,35 +286,32 @@ function TodayPage() {
                 BE THE FIRST.
               </p>
             ) : (
-              <ol className="mt-2 border-t border-border">
-                {groupRows.map((row, i) => (
-                  <li
-                    key={row.member.id}
-                    className="flex items-center justify-between border-b border-border py-2"
+              <>
+                <ol className="mt-2 border-t border-border">
+                  {visible.map((row, i) => (
+                    <TodayGroupRow
+                      key={row.member.id}
+                      row={row}
+                      rank={i + 1}
+                      me={row.member.id === member.id}
+                    />
+                  ))}
+                </ol>
+                {pinMe && myRow && (
+                  <ol className="mt-2 border-t border-border">
+                    <TodayGroupRow row={myRow} rank={myRank + 1} me />
+                  </ol>
+                )}
+                {remaining > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setVisibleCount((n) => n + PAGE_SIZE)}
+                    className="mt-2 flex h-11 w-full items-center justify-center border border-border bg-card text-xs font-bold tracking-[0.2em] text-muted-foreground active:bg-muted"
                   >
-                    <span className="flex items-baseline gap-3">
-                      <span className="tnum w-6 text-sm font-semibold text-muted-foreground">
-                        {String(i + 1).padStart(2, "0")}
-                      </span>
-                      <span
-                        className={`text-lg font-bold tracking-wide ${
-                          row.complete
-                            ? "text-complete"
-                            : hasAnyReps(row.reps)
-                              ? "text-partial"
-                              : "text-idle"
-                        } ${row.member.id === member.id ? "underline underline-offset-4" : ""}`}
-                      >
-                        {row.member.name.toUpperCase()}
-                      </span>
-                    </span>
-                    <span className="tnum text-lg font-semibold">
-                      {row.total} / {row.target}{" "}
-                      {row.complete && <span className="text-complete">✓</span>}
-                    </span>
-                  </li>
-                ))}
-              </ol>
+                    SHOW MORE · {remaining} LEFT
+                  </button>
+                )}
+              </>
             )}
           </section>
         </>
@@ -344,5 +357,40 @@ function TodayPage() {
         </div>
       )}
     </div>
+  );
+}
+
+function TodayGroupRow({
+  row,
+  rank,
+  me,
+}: {
+  row: GroupRow;
+  rank: number;
+  me: boolean;
+}) {
+  return (
+    <li className="flex items-center justify-between border-b border-border py-2">
+      <span className="flex items-baseline gap-3">
+        <span className="tnum w-6 text-sm font-semibold text-muted-foreground">
+          {String(rank).padStart(2, "0")}
+        </span>
+        <span
+          className={`text-lg font-bold tracking-wide ${
+            row.complete
+              ? "text-complete"
+              : hasAnyReps(row.reps)
+                ? "text-partial"
+                : "text-idle"
+          } ${me ? "underline underline-offset-4" : ""}`}
+        >
+          {row.member.name.toUpperCase()}
+        </span>
+      </span>
+      <span className="tnum text-lg font-semibold">
+        {row.total} / {row.target}{" "}
+        {row.complete && <span className="text-complete">✓</span>}
+      </span>
+    </li>
   );
 }
