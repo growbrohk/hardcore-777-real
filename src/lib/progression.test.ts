@@ -8,6 +8,7 @@ import {
   evaluateMonth,
   meetsAll,
   memberStatusLabel,
+  rankLevels,
   routineForMonth,
 } from "./progression";
 
@@ -119,6 +120,26 @@ describe("evaluateMonth", () => {
 describe("memberStatusLabel", () => {
   test("full stay lagged: full_3 + 4 active is still ONE PUNCH", () => {
     expect(memberStatusLabel("full_3", 4, "man")).toBe("ONE PUNCH MAN");
+  });
+});
+
+describe("rankLevels", () => {
+  test("lists every count from 3 to 7 with gendered titles", () => {
+    const levels = rankLevels("woman");
+    expect(levels.map((l) => l.count)).toEqual([3, 4, 5, 6, 7]);
+    expect(levels[0]).toEqual({
+      count: 3,
+      halfLabel: "HALF PUNCH WOMAN",
+      fullLabel: "ONE PUNCH WOMAN",
+      unlockLabel: null,
+    });
+    expect(levels[1]?.unlockLabel).toBe("LUNGES");
+    expect(levels[4]).toEqual({
+      count: 7,
+      halfLabel: "HALF 7 PUNCHES WOMAN",
+      fullLabel: "7 PUNCHES WOMAN",
+      unlockLabel: "BURPEES",
+    });
   });
 });
 

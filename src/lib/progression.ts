@@ -3,6 +3,7 @@
 // screen (TODAY, ME, LEADERBOARD) so nothing is calculated twice differently.
 import { prevMonthKey } from "./dates";
 import {
+  EXERCISES,
   EXERCISE_KEYS,
   MAX_EXERCISES,
   MIN_EXERCISES,
@@ -66,6 +67,28 @@ export function memberStatusLabel(id: string, activeCount: number, gender: Gende
   const { count, tier } = parseStatus(id);
   const shown = tier === "half" && activeCount > count ? statusId(activeCount, tier) : id;
   return statusLabel(shown, gender);
+}
+
+export interface RankLevel {
+  count: number;
+  halfLabel: string;
+  fullLabel: string;
+  /** Exercise unlocked at this count; null for the starting 3. */
+  unlockLabel: string | null;
+}
+
+/** Every unlock step from 3 to 7 exercises, with HALF / FULL titles. */
+export function rankLevels(gender: Gender = "man"): RankLevel[] {
+  const levels: RankLevel[] = [];
+  for (let count = MIN_EXERCISES; count <= MAX_EXERCISES; count++) {
+    levels.push({
+      count,
+      halfLabel: statusLabel(statusId(count, "half"), gender),
+      fullLabel: statusLabel(statusId(count, "full"), gender),
+      unlockLabel: count > MIN_EXERCISES ? EXERCISES[count - 1]!.label : null,
+    });
+  }
+  return levels;
 }
 
 export function totalReps(reps: Reps): number {

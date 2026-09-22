@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { ChevronLeft, ChevronRight, Minus, Plus, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Info, Minus, Plus, X } from "lucide-react";
 import type { MemberDTO, RecordDTO } from "@/lib/hardcore.types";
 import { type Reps } from "@/lib/exercises";
 import {
@@ -21,7 +21,14 @@ import {
   routineTarget,
   type MonthSnapshot,
 } from "@/lib/member-ui";
-import { dayLevel } from "@/lib/progression";
+import {
+  FULL_TARGET,
+  HALF_TARGET,
+  QUALIFYING_DAYS,
+  dayLevel,
+  rankLevels,
+  type Gender,
+} from "@/lib/progression";
 import { clampRep, currentStreak, longestStreak, totalReps } from "@/lib/stats";
 
 const WEEKDAYS = ["M", "T", "W", "T", "F", "S", "S"];
@@ -47,6 +54,7 @@ export function MemberProfile({
 }) {
   const [cursor, setCursor] = useState(() => monthStart(initialCursor ?? todayLocal()));
   const [selected, setSelected] = useState<string | null>(null);
+  const [showRanks, setShowRanks] = useState(false);
 
   useEffect(() => {
     if (initialCursor) setCursor(monthStart(initialCursor));
@@ -84,8 +92,16 @@ export function MemberProfile({
       <header className="flex items-start justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">{member.name.toUpperCase()}</h1>
-          <p className="mt-1 text-sm font-semibold tracking-[0.3em] text-muted-foreground">
+          <p className="mt-1 flex items-center gap-1.5 text-sm font-semibold tracking-[0.3em] text-muted-foreground">
             {memberStatusLabel(member.statusId, member.activeCount, member.gender)}
+            <button
+              type="button"
+              onClick={() => setShowRanks(true)}
+              aria-label="Ranking levels"
+              className="flex h-5 w-5 shrink-0 items-center justify-center text-muted-foreground active:text-foreground"
+            >
+              <Info className="h-4 w-4" strokeWidth={2.5} />
+            </button>
           </p>
         </div>
         {headerAction}
@@ -202,6 +218,94 @@ export function MemberProfile({
           onSave={onSave}
         />
       )}
+
+      {showRanks && (
+        <RankInfoSheet
+          gender={member.gender}
+          currentLabel={memberStatusLabel(member.statusId, member.activeCount, member.gender)}
+          onClose={() => setShowRanks(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+function RankInfoSheet({
+  gender,
+  currentLabel,
+  onClose,
+}: {
+  gender: Gender;
+  currentLabel: string;
+  onClose: () => void;
+}) {
+  const levels = rankLevels(gender);
+
+  return (
+    <div
+      className="fixed inset-0 z-[70] flex items-end justify-center bg-background/80"
+      onClick={onClose}
+    >
+      <div
+        className="max-h-[min(90dvh,40rem)] w-full max-w-md overflow-y-auto border-t-2 border-primary bg-card p-4"
+        style={{ paddingBottom: "calc(2rem + env(safe-area-inset-bottom))" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between">
+          <h3 className="text-lg font-bold tracking-[0.2em]">RANKING LEVELS</h3>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="flex h-10 w-10 items-center justify-center border border-border active:bg-muted"
+          >
+            <X className="h-5 w-5" strokeWidth={2.5} />
+          </button>
+        </div>
+
+        <div className="mt-3 text-xs font-semibold leading-relaxed text-muted-foreground">
+          <p>A rank is the highest routine you held for {QUALIFYING_DAYS} days in a calendar month.</p>
+          <p>
+            HALF = {HALF_TARGET}+ on every active exercise. FULL = {FULL_TARGET}+.
+          </p>
+        </div>
+
+        <ol className="mt-4 flex flex-col gap-2">
+          {levels.map((level) => {
+            const current = level.halfLabel === currentLabel || level.fullLabel === currentLabel;
+            const title = level.halfLabel.replace(/^HALF\s+/, "(HALF) ");
+            return (
+              <li key={level.count} className="border border-border px-3 py-2">
+                <p className="flex items-center justify-between gap-2 text-xs font-bold tracking-widest text-muted-foreground">
+                  <span>{level.count} EXERCISES</span>
+                  {level.unlockLabel && <span>+ {level.unlockLabel}</span>}
+                </p>
+                <p
+                  className={`mt-1 text-sm font-semibold tracking-widest ${current ? "text-primary" : ""}`}
+                >
+                  {title}
+                </p>
+              </li>
+            );
+          })}
+        </ol>
+
+        <section className="mt-5">
+          <h4 className="text-xs font-bold tracking-[0.25em] text-muted-foreground">PROMOTE</h4>
+          <p className="mt-2 text-sm font-semibold leading-relaxed text-foreground">
+            Hit {QUALIFYING_DAYS} days at your current routine (HALF or FULL). That unlocks the next
+            exercise, up to 7.
+          </p>
+        </section>
+
+        <section className="mt-4">
+          <h4 className="text-xs font-bold tracking-[0.25em] text-muted-foreground">DEMOTE</h4>
+          <p className="mt-2 text-sm font-semibold leading-relaxed text-foreground">
+            Miss {QUALIFYING_DAYS} days at your current count and you drop to the highest count and
+            tier you did hit. Hit none and you reset to HALF PUNCH (3 exercises).
+          </p>
+        </section>
+      </div>
     </div>
   );
 }
