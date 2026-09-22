@@ -283,6 +283,19 @@ export async function listMemberNames(): Promise<MemberDTO[]> {
   return ((data ?? []) as MemberRow[]).map(toMember);
 }
 
+type MemberAuthRow = MemberRow & { pin_hash: string };
+
+/** Case-insensitive exact name match (ILIKE treats `_`/`%` as wildcards). */
+async function findMemberForLogin(name: string): Promise<MemberAuthRow | null> {
+  const needle = name.trim().toLowerCase();
+  const { data, error } = await supabaseAdmin.from("members").select(`${MEMBER_COLS}, pin_hash`);
+  if (error) throw new Error("Failed to load members");
+  return (
+    ((data ?? []) as MemberAuthRow[]).find((row) => row.name.trim().toLowerCase() === needle) ??
+    null
+  );
+}
+
 export async function login(
   name: string,
   pin: string,
@@ -290,25 +303,26 @@ export async function login(
   const key = name.trim().toLowerCase();
   checkRateLimit(key);
 
-  const { data, error } = await supabaseAdmin
-    .from("members")
-    .select(`${MEMBER_COLS}, pin_hash`)
-    .ilike("name", name.trim())
-    .limit(1)
-    .maybeSingle();
+  let data: MemberAuthRow | null;
+  try {
+    data = await findMemberForLogin(name);
+  } catch {
+    recordFailure(key);
+    throw new Error("Wrong name or PIN.");
+  }
 
   const pinHash = await sha256Hex(pin);
   // Always compare against something so timing doesn't reveal whether the name exists.
-  const storedHash = (data as { pin_hash?: string } | null)?.pin_hash ?? "0".repeat(64);
+  const storedHash = data?.pin_hash ?? "0".repeat(64);
 
-  if (error || !data || !safeEqualHex(pinHash, storedHash)) {
+  if (!data || !safeEqualHex(pinHash, storedHash)) {
     recordFailure(key);
     throw new Error("Wrong name or PIN.");
   }
 
   attempts.delete(key);
   const token = await signToken(data.id);
-  return { token, member: toMember(data as MemberRow) };
+  return { token, member: toMember(data) };
 }
 
 export async function signup(

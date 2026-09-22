@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { listMemberNames, loginWithPin, signupWithPin } from "@/lib/hardcore.functions";
 import type { MemberDTO } from "@/lib/hardcore.types";
+import { todayLocal } from "@/lib/dates";
 import { getStoredSession, storeSession } from "@/lib/session";
 
 export const Route = createFileRoute("/login")({
@@ -61,7 +62,7 @@ function LoginPage() {
       const { token, member } =
         mode === "login"
           ? await loginWithPin({ data: { name, pin } })
-          : await signupWithPin({ data: { name, pin } });
+          : await signupWithPin({ data: { name, pin, today: todayLocal() } });
       storeSession({ token, member });
       void navigate({ to: "/", replace: true });
     } catch (err) {

@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { validateSession } from "@/lib/hardcore.functions";
+import { todayLocal } from "@/lib/dates";
 import {
   clearStoredSession,
   getStoredSession,
@@ -35,7 +36,9 @@ export function AppShell({ children }: { children: ReactNode }) {
         return;
       }
       try {
-        const member = await validateSession({ data: { token: stored.token } });
+        const member = await validateSession({
+          data: { token: stored.token, today: todayLocal() },
+        });
         if (cancelled) return;
         const fresh = { token: stored.token, member };
         storeSession(fresh);

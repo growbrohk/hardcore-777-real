@@ -56,7 +56,7 @@ function LeaderboardPage() {
   const { token, member } = useSession();
   const [period, setPeriod] = useState<Period>("month");
   const [metric, setMetric] = useState<Metric>("reps");
-  const [ref, setRef] = useState(todayLocal);
+  const [ref, setRef] = useState(() => todayLocal());
   const [rows, setRows] = useState<LeaderboardRowDTO[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -229,13 +229,13 @@ function LeaderboardPage() {
                 ) : (
                   <div className="grid grid-cols-4 gap-3 tnum text-right text-base font-semibold">
                     <span className={me ? "text-primary" : "text-foreground"}>
-                      {row.pushups.toLocaleString("en-US")}
+                      {row.reps.pushups.toLocaleString("en-US")}
                     </span>
                     <span className={me ? "text-primary" : "text-foreground"}>
-                      {row.situps.toLocaleString("en-US")}
+                      {row.reps.situps.toLocaleString("en-US")}
                     </span>
                     <span className={me ? "text-primary" : "text-foreground"}>
-                      {row.squats.toLocaleString("en-US")}
+                      {row.reps.squats.toLocaleString("en-US")}
                     </span>
                     <span className="flex items-center justify-end gap-1">
                       <span className={me ? "text-primary" : "text-foreground"}>
