@@ -43,7 +43,7 @@ function ShareAppDialog({ onClose }: { onClose: () => void }) {
     }
   };
 
-  const whatsapp = `https://wa.me/?text=${encodeURIComponent(`${INVITE} ${url}`)}`;
+  const whatsapp = `https://wa.me/?text=${encodeURIComponent(`${INVITE}\n${url}`)}`;
 
   return (
     <div
