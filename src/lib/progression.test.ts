@@ -37,6 +37,7 @@ describe("evaluateMonth", () => {
     expect(result.statusId).toBe("full_3");
     expect(result.activeCount).toBe(4);
     expect(result.unlocked).toBe(true);
+    expect(memberStatusLabel(result.statusId, result.activeCount, "man")).toBe("PUNCH PUNCH MAN");
   });
 
   test("§9 Scenario B: 5 active, only 4×100 for 21 days → 4 active, no unlock", () => {
@@ -118,8 +119,8 @@ describe("evaluateMonth", () => {
 });
 
 describe("memberStatusLabel", () => {
-  test("full stay lagged: full_3 + 4 active is still ONE PUNCH", () => {
-    expect(memberStatusLabel("full_3", 4, "man")).toBe("ONE PUNCH MAN");
+  test("full titles step up: full_3 + 4 active is PUNCH PUNCH", () => {
+    expect(memberStatusLabel("full_3", 4, "man")).toBe("PUNCH PUNCH MAN");
   });
 });
 

@@ -372,6 +372,37 @@ async function ensureProgression(row: MemberRow, today: string): Promise<MemberR
   return (data as MemberRow | null) ?? { ...row, ...patch };
 }
 
+function utcToday(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function memberRowChanged(before: MemberRow, after: MemberRow): boolean {
+  return (
+    before.status_id !== after.status_id ||
+    before.active_count !== after.active_count ||
+    before.highest_unlocked !== after.highest_unlocked ||
+    before.status_month !== after.status_month
+  );
+}
+
+/**
+ * Grades members whose status_month is behind the server UTC month.
+ * Peers are never graded on a viewer's local date, so a timezone-ahead
+ * client cannot close someone else's month early.
+ */
+async function ensureStaleProgression(rows: MemberRow[]): Promise<MemberRow[]> {
+  const today = utcToday();
+  const utcMonth = monthKey(today);
+  const stale = rows.filter((row) => !row.status_month || row.status_month < utcMonth);
+  if (stale.length === 0) return rows;
+  const graded = await Promise.all(stale.map((row) => ensureProgression(row, today)));
+  const byId = new Map(graded.map((row) => [row.id, row]));
+  if (graded.some((row, i) => memberRowChanged(stale[i]!, row))) {
+    clearLeaderboardCache();
+  }
+  return rows.map((row) => byId.get(row.id) ?? row);
+}
+
 // ---------- public API used by the server functions ----------
 
 type MemberAuthRow = MemberRow & { pin_hash: string };
@@ -505,7 +536,8 @@ async function loadSnapshotMaps(
 
 export async function getBoard(token: string, date: string): Promise<BoardDTO> {
   const memberId = await memberIdFromToken(token);
-  const me = await ensureProgression(await loadMemberRow(memberId), clampTrustedClientDate(date));
+  const trusted = clampTrustedClientDate(date);
+  const me = await ensureProgression(await loadMemberRow(memberId), trusted);
   const month = monthKey(date);
   const [from, to] = monthBounds(month);
 
@@ -521,13 +553,16 @@ export async function getBoard(token: string, date: string): Promise<BoardDTO> {
   ]);
   if (membersRes.error || recordsRes.error) throw new Error("Failed to load today");
 
+  const memberRows = await ensureStaleProgression((membersRes.data ?? []) as MemberRow[]);
+  const members = memberRows.map((row) => toMember(row.id === me.id ? me : row));
+
   const activeCount = clampCount(me.active_count ?? MIN_EXERCISES);
   const myQualifyingDays = ((myMonthRes.data ?? []) as RecRow[]).filter((r) =>
     meetsAll(toReps(r), activeCount, HALF_TARGET),
   ).length;
 
   return {
-    members: ((membersRes.data ?? []) as MemberRow[]).map(toMember),
+    members,
     records: ((recordsRes.data ?? []) as RecRow[]).map(toRecord),
     myQualifyingDays,
   };
@@ -542,7 +577,7 @@ export async function saveRecord(
     throw new Error("Can only log today's reps");
   }
   const memberId = await memberIdFromToken(token);
-  const memberRow = await loadMemberRow(memberId);
+  const memberRow = await ensureProgression(await loadMemberRow(memberId), date);
   const loggable = new Set(activeKeys(clampCount(memberRow.active_count ?? MIN_EXERCISES)));
   const preserved = new Set(
     activeKeys(clampCount(memberRow.highest_unlocked ?? MIN_EXERCISES)),
@@ -599,8 +634,14 @@ export async function getLeaderboard(
   const snapLo = prevMonthKey(monthKey(start));
   const snapHi = prevMonthKey(monthKey(end));
 
-  const [membersRes, snapMaps, records] = await Promise.all([
-    supabaseAdmin.from("members").select(MEMBER_COLS).order("name", { ascending: true }),
+  const membersRes = await supabaseAdmin
+    .from("members")
+    .select(MEMBER_COLS)
+    .order("name", { ascending: true });
+  if (membersRes.error) throw new Error("Failed to load leaderboard");
+  const memberRows = await ensureStaleProgression((membersRes.data ?? []) as MemberRow[]);
+
+  const [snapMaps, records] = await Promise.all([
     loadSnapshotMaps(snapLo, snapHi),
     fetchAllPages<RecRow>((from, to) =>
       supabaseAdmin
@@ -613,9 +654,6 @@ export async function getLeaderboard(
         .range(from, to),
     ),
   ]);
-  if (membersRes.error) throw new Error("Failed to load leaderboard");
-
-  const memberRows = (membersRes.data ?? []) as MemberRow[];
   const refMonth = monthKey(ref);
   const periodRoutineCount = (snap: Record<string, MonthSnapshot>, m: MemberDTO) =>
     period === "year"
@@ -709,12 +747,12 @@ export async function getMyRecords(token: string, today: string): Promise<MyHist
   return loadMemberHistory(memberId, row);
 }
 
-/** Read another member's history. Viewer must be logged in; no progression write. */
+/** Read another member's history. Viewer must be logged in; grades the target if the UTC month has rolled. */
 export async function getMemberRecords(
   token: string,
   targetMemberId: string,
 ): Promise<MyHistoryDTO> {
   await memberIdFromToken(token);
-  const row = await loadMemberRow(targetMemberId);
+  const [row] = await ensureStaleProgression([await loadMemberRow(targetMemberId)]);
   return loadMemberHistory(targetMemberId, row);
 }

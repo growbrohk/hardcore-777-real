@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { validateSession } from "@/lib/hardcore.functions";
 import { todayLocal } from "@/lib/dates";
@@ -26,20 +26,24 @@ export function useSession(): StoredSession {
 export function AppShell({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const [session, setSession] = useState<StoredSession | "loading" | null>("loading");
+  const lastDay = useRef<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+
+    const refresh = async () => {
       const stored = getStoredSession();
       if (!stored) {
         setSession(null);
         return;
       }
       try {
+        const today = todayLocal();
         const member = await validateSession({
-          data: { token: stored.token, today: todayLocal() },
+          data: { token: stored.token, today },
         });
         if (cancelled) return;
+        lastDay.current = today;
         const fresh = { token: stored.token, member };
         storeSession(fresh);
         setSession(fresh);
@@ -48,9 +52,17 @@ export function AppShell({ children }: { children: ReactNode }) {
         clearStoredSession();
         setSession(null);
       }
-    })();
+    };
+
+    void refresh();
+    const onFocus = () => {
+      if (todayLocal() === lastDay.current) return;
+      void refresh();
+    };
+    window.addEventListener("focus", onFocus);
     return () => {
       cancelled = true;
+      window.removeEventListener("focus", onFocus);
     };
   }, []);
 

@@ -62,10 +62,10 @@ export function statusLabel(id: string, gender: Gender = "man"): string {
   return `${baseLabel(count, tier)} ${gender === "woman" ? "WOMAN" : "MAN"}`;
 }
 
-/** Half titles step up with the unlocked count; full stays lagged (ONE PUNCH + 4). */
+/** Titles step up with the unlocked count (HALF PUNCH + 4 → HALF PUNCH PUNCH; ONE PUNCH + 4 → PUNCH PUNCH). */
 export function memberStatusLabel(id: string, activeCount: number, gender: Gender = "man"): string {
   const { count, tier } = parseStatus(id);
-  const shown = tier === "half" && activeCount > count ? statusId(activeCount, tier) : id;
+  const shown = activeCount > count ? statusId(activeCount, tier) : id;
   return statusLabel(shown, gender);
 }
 

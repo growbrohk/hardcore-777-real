@@ -61,7 +61,9 @@ type GroupRow = {
 
 function TodayPage() {
   const { token, member } = useSession();
-  const [date] = useState(todayLocal);
+  const [date, setDate] = useState(todayLocal);
+  const dateRef = useRef(date);
+  dateRef.current = date;
   const [members, setMembers] = useState<MemberDTO[]>([]);
   const [records, setRecords] = useState<Record<string, RecordDTO>>({});
   const [mine, setMine] = useState<Reps>({ ...ZERO_REPS });
@@ -129,7 +131,14 @@ function TodayPage() {
   useEffect(() => {
     void load();
     const interval = window.setInterval(() => void load(), 30000);
-    const onFocus = () => void load();
+    const onFocus = () => {
+      const today = todayLocal();
+      if (today !== dateRef.current) {
+        setDate(today);
+        return;
+      }
+      void load();
+    };
     window.addEventListener("focus", onFocus);
     return () => {
       window.clearInterval(interval);
