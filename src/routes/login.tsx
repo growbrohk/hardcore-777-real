@@ -5,6 +5,10 @@ import { todayLocal } from "@/lib/dates";
 import { getStoredSession, storeSession } from "@/lib/session";
 
 export const Route = createFileRoute("/login")({
+  validateSearch: (search: Record<string, unknown>): { join?: true } =>
+    search.join === true || search.join === "true" || search.join === "1" || search.join === 1
+      ? { join: true }
+      : {},
   head: () => ({
     meta: [
       { title: "Login — 777 HARDCORE" },
@@ -19,7 +23,8 @@ export const Route = createFileRoute("/login")({
 
 function LoginPage() {
   const navigate = useNavigate();
-  const [mode, setMode] = useState<"login" | "signup">("login");
+  const { join } = Route.useSearch();
+  const [mode, setMode] = useState<"login" | "signup">(join ? "signup" : "login");
   const [name, setName] = useState("");
   const [pin, setPin] = useState("");
   const [pin2, setPin2] = useState("");

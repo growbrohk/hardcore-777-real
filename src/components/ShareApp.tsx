@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Share, X } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 
-const SHARE_URL = "https://hardcore-777.vercel.app/";
+const SHARE_URL = "https://hardcore-777.vercel.app/login?join=true";
 const INVITE =
   "Join 777 HARDCORE — 100 push-ups, 100 sit-ups, 100 squats, every day.";
 
