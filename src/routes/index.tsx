@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AppShell, useSession } from "@/components/AppShell";
 import { RankInfoButton } from "@/components/RankInfoSheet";
 import { RepCard } from "@/components/RepCard";
+import { ShareAppButton } from "@/components/ShareApp";
 import { getTodayBoard } from "@/lib/hardcore.functions";
 import type { MemberDTO, RecordDTO } from "@/lib/hardcore.types";
 import { EXERCISES, ZERO_REPS, type Reps } from "@/lib/exercises";
@@ -210,9 +211,12 @@ function TodayPage() {
     <div className="px-4 pt-safe">
       <header className="flex items-end justify-between">
         <div>
-          <h1 className="text-3xl font-bold leading-none tracking-tight">
-            777 <span className="text-primary">HARDCORE</span>
-          </h1>
+          <div className="flex items-center gap-1">
+            <h1 className="text-3xl font-bold leading-none tracking-tight">
+              777 <span className="text-primary">HARDCORE</span>
+            </h1>
+            <ShareAppButton />
+          </div>
           <p className="tnum mt-1 text-sm font-semibold tracking-[0.3em] text-muted-foreground">
             {formatHeaderDate(date)}
           </p>
